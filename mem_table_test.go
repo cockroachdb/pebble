@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -52,6 +53,7 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 // interaction with prepare/apply. Caveat emptor!
 func (m *memTable) set(key InternalKey, value []byte) error {
 	if key.Kind() == InternalKeyKindRangeDelete {
+		m.tombstones.updateBounds(key.UserKey, value)
 		if err := m.rangeDelSkl.Add(key, value); err != nil {
 			return err
 		}
@@ -373,6 +375,119 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+}
+
+func TestMemTableRangeDelIter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	// The memtable's range deletes span [d/a, d/z).
+	m := newMemTable(memTableOptions{})
+	require.NoError(t, m.set(base.MakeInternalKey([]byte("d/a"), 1, InternalKeyKindRangeDelete), []byte("d/m")))
+	require.NoError(t, m.set(base.MakeInternalKey([]byte("d/m"), 2, InternalKeyKindRangeDelete), []byte("d/z")))
+
+	t.Run("point", func(t *testing.T) {
+		for _, tc := range []struct {
+			key  string
+			want string
+		}{
+			{"c", ""},
+			{"d/z", ""}, // range delete ends are exclusive
+			{"r/c", ""},
+			{"d/a", "d/a-d/m:{(#1,RANGEDEL)}"},
+			{"d/q", "d/m-d/z:{(#2,RANGEDEL)}"},
+		} {
+			iter := m.newRangeDelIter(&IterOptions{pointKey: []byte(tc.key)})
+			s, err := iter.SeekGE([]byte(tc.key))
+			require.NoError(t, err)
+			if tc.want == "" {
+				require.Nil(t, s, tc.key)
+			} else {
+				require.Equal(t, tc.want, s.String(), tc.key)
+			}
+			iter.Close()
+		}
+	})
+
+	t.Run("overlapping-scan", func(t *testing.T) {
+		iter := m.newRangeDelIter(&IterOptions{LowerBound: []byte("c"), UpperBound: []byte("d/b")})
+		defer iter.Close()
+		s, err := iter.SeekGE([]byte("c"))
+		require.NoError(t, err)
+		require.Equal(t, "d/a-d/m:{(#1,RANGEDEL)}", s.String())
+	})
+
+	// Adjusts iterator bounds while iterating is still in use.
+	t.Run("set-bounds", func(t *testing.T) {
+		opts := &IterOptions{LowerBound: []byte("a"), UpperBound: []byte("c")}
+		iter := m.newRangeDelIter(opts)
+		defer iter.Close()
+		s, err := iter.SeekGE([]byte("a"))
+		require.NoError(t, err)
+		require.Nil(t, s)
+		// Widen the bounds to overlap the range deletes.
+		opts.LowerBound, opts.UpperBound = []byte("c"), []byte("d/b")
+		s, err = iter.SeekGE([]byte("c"))
+		require.NoError(t, err)
+		require.Equal(t, "d/a-d/m:{(#1,RANGEDEL)}", s.String())
+		// Narrow the bounds to no longer overlap. Steps following the skipped
+		// seek must not step from the earlier position.
+		opts.LowerBound, opts.UpperBound = []byte("r/a"), []byte("r/z")
+		s, err = iter.SeekGE([]byte("r/c"))
+		require.NoError(t, err)
+		require.Nil(t, s)
+		s, err = iter.Prev()
+		require.NoError(t, err)
+		require.Nil(t, s)
+	})
+
+	// Adds a range delete that overlaps every read after iterator construction.
+	t.Run("non-overlapping-scan", func(t *testing.T) {
+		bound := func(s string) []byte {
+			if s == "" {
+				return nil
+			}
+			return []byte(s)
+		}
+		var iters []keyspan.FragmentIterator
+		for _, scan := range [][2]string{
+			{"r/a", "r/z"},
+			{"a", "c"},
+			{"", "d/a"}, // upper bound equals the first range delete's start
+			{"d/z", ""}, // lower bound equals the last range delete's (exclusive) end
+		} {
+			iter := m.newRangeDelIter(&IterOptions{LowerBound: bound(scan[0]), UpperBound: bound(scan[1])})
+			iters = append(iters, iter)
+			defer iter.Close()
+
+			s, err := iter.First()
+			require.NoError(t, err)
+			require.Nil(t, s)
+
+			s, err = iter.Last()
+			require.NoError(t, err)
+			require.Nil(t, s)
+
+			s, err = iter.SeekGE([]byte("d/c"))
+			require.NoError(t, err)
+			require.Nil(t, s)
+		}
+
+		require.NoError(t, m.set(base.MakeInternalKey([]byte("a"), 100, InternalKeyKindRangeDelete), []byte("z")))
+
+		// The new range delete should not be visible to the iterators.
+		for _, iter := range iters {
+			s, err := iter.Prev()
+			require.NoError(t, err)
+			require.Nil(t, s)
+
+			s, err = iter.SeekLT([]byte("d/c"))
+			require.NoError(t, err)
+			require.Nil(t, s)
+
+			s, err = iter.Next()
+			require.NoError(t, err)
+			require.Nil(t, s)
+		}
+	})
 }
 
 func TestMemTableReserved(t *testing.T) {

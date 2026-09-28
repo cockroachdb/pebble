@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 func memTableEntrySize(keyBytes, valueBytes int) uint64 {
@@ -227,6 +228,7 @@ func (m *memTable) apply(batch *Batch, seqNum base.SeqNum) error {
 		ikey := base.MakeInternalKey(ukey, seqNum, kind)
 		switch kind {
 		case InternalKeyKindRangeDelete:
+			m.tombstones.updateBounds(ukey, value)
 			err = m.rangeDelSkl.Add(ikey, value)
 			tombstoneCount++
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
@@ -271,23 +273,17 @@ func (m *memTable) newFlushIter(o *IterOptions) internalIterator {
 }
 
 // newRangeDelIter is part of the flushable interface.
-func (m *memTable) newRangeDelIter(*IterOptions) keyspan.FragmentIterator {
-	tombstones := m.tombstones.get()
-	if tombstones == nil {
+func (m *memTable) newRangeDelIter(opts *IterOptions) keyspan.FragmentIterator {
+	if m.tombstones.count.Load() == 0 {
 		return nil
 	}
-	if invariants.Enabled {
-		for i := range tombstones {
-			for j := range tombstones[i].Keys {
-				switch tombstones[i].Keys[j].Kind() {
-				case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-					panic(errors.Newf("memTable.newRangeDelIter: tombstones contain range key kind: %s in span [%s, %s)",
-						tombstones[i].Keys[j].Kind(), tombstones[i].Start, tombstones[i].End))
-				}
-			}
-		}
+	// Snapshot range delete bounds so the iterator has a consistent view
+	// across Iter calls, even when concurrent range deletes are in flight.
+	bounds := m.tombstones.bounds.Load()
+	if bounds == nil {
+		return nil
 	}
-	return keyspan.NewIter(m.cmp, tombstones)
+	return &memtableRangeDelIter{cache: &m.tombstones, bounds: bounds, cmp: m.cmp, opts: opts}
 }
 
 // newRangeKeyIter is part of the flushable interface.
@@ -415,10 +411,46 @@ func (f *keySpanFrags) get(
 type keySpanCache struct {
 	count         atomic.Uint32
 	frags         atomic.Pointer[keySpanFrags]
+	bounds        atomic.Pointer[keySpanBounds]
 	cmp           Compare
 	formatKey     base.FormatKey
 	constructSpan constructSpan
 	skl           *arenaskl.Skiplist
+}
+
+// keySpanBounds is the extent [min, max) of the spans in a keySpanCache. It is
+// immutable (updateBounds replaces it rather than modifying it), so it is safe
+// to snapshot.
+type keySpanBounds struct {
+	min, max []byte
+}
+
+// updateBounds extends keySpanBounds min/max as needed for new spans. It must
+// be called before the corresponding span is added to skip list so that
+// readers cannot observe spans that are not covered by the bounds.
+func (c *keySpanCache) updateBounds(start, end []byte) {
+	for {
+		old := c.bounds.Load()
+		updateMin := old == nil || c.cmp(start, old.min) < 0
+		updateMax := old == nil || c.cmp(end, old.max) > 0
+		if !updateMin && !updateMax {
+			return
+		}
+		nb := &keySpanBounds{}
+		if updateMin {
+			nb.min = bytes.Clone(start)
+		} else {
+			nb.min = old.min
+		}
+		if updateMax {
+			nb.max = bytes.Clone(end)
+		} else {
+			nb.max = old.max
+		}
+		if c.bounds.CompareAndSwap(old, nb) {
+			return
+		}
+	}
 }
 
 // Invalidate the current set of cached spans, indicating the number of
@@ -451,4 +483,118 @@ func (c *keySpanCache) get() []keyspan.Span {
 		return nil
 	}
 	return frags.get(c.skl, c.cmp, c.formatKey, c.constructSpan)
+}
+
+// memtableRangeDelIter avoids rebuilding cached fragments for reads that do
+// not overlap range deletes. Every range delete invalidates the cache, and the
+// next readers block on cache rebuild. Under a steady stream of range deletes,
+// readers of non-overlapping ranges would otherwise repeatedly pay for
+// rebuilds they don't need.
+//
+// The overlap decision must be stable between an absolute positioning call
+// and the relative calls that follow. newRangeDelIter snapshots the range
+// delete bounds at construction.
+type memtableRangeDelIter struct {
+	keyspan.Iter
+	cache  *keySpanCache
+	bounds *keySpanBounds
+	cmp    Compare
+	opts   *IterOptions
+	loaded bool
+}
+
+// deletesMayOverlap reports whether the read described by IterOptions overlaps
+// the snapshotted range delete bounds. False positives are acceptable and the
+// check returns true when reads are ambiguous (like nil IterOptions).
+func (i *memtableRangeDelIter) deletesMayOverlap() bool {
+	b := i.bounds
+	if i.opts == nil {
+		return true
+	}
+	if i.opts.pointKey != nil {
+		return i.cmp(i.opts.pointKey, b.min) >= 0 && i.cmp(i.opts.pointKey, b.max) < 0
+	}
+	if i.opts.LowerBound != nil && i.cmp(i.opts.LowerBound, b.max) >= 0 {
+		return false
+	}
+	if i.opts.UpperBound != nil && i.cmp(i.opts.UpperBound, b.min) <= 0 {
+		return false
+	}
+	return true
+}
+
+func (i *memtableRangeDelIter) SeekGE(key []byte) (*keyspan.Span, error) {
+	if !i.deletesMayOverlap() {
+		return nil, nil
+	}
+	i.load()
+	return i.Iter.SeekGE(key)
+}
+
+func (i *memtableRangeDelIter) SeekLT(key []byte) (*keyspan.Span, error) {
+	if !i.deletesMayOverlap() {
+		return nil, nil
+	}
+	i.load()
+	return i.Iter.SeekLT(key)
+}
+
+func (i *memtableRangeDelIter) First() (*keyspan.Span, error) {
+	if !i.deletesMayOverlap() {
+		return nil, nil
+	}
+	i.load()
+	return i.Iter.First()
+}
+
+func (i *memtableRangeDelIter) Last() (*keyspan.Span, error) {
+	if !i.deletesMayOverlap() {
+		return nil, nil
+	}
+	i.load()
+	return i.Iter.Last()
+}
+
+func (i *memtableRangeDelIter) Next() (*keyspan.Span, error) {
+	if !i.deletesMayOverlap() {
+		return nil, nil
+	}
+	return i.Iter.Next()
+}
+
+func (i *memtableRangeDelIter) Prev() (*keyspan.Span, error) {
+	if !i.deletesMayOverlap() {
+		return nil, nil
+	}
+	return i.Iter.Prev()
+}
+
+func (i *memtableRangeDelIter) String() string {
+	return "memtableRangeDelIter"
+}
+
+func (i *memtableRangeDelIter) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(i, "%T(%p)", i, i)
+}
+
+func (i *memtableRangeDelIter) load() {
+	if i.loaded {
+		return
+	}
+
+	tombstones := i.cache.get()
+	if invariants.Enabled {
+		for i := range tombstones {
+			for j := range tombstones[i].Keys {
+				switch tombstones[i].Keys[j].Kind() {
+				case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+					panic(errors.Newf("memTable.newRangeDelIter: tombstones contain range key kind: %s in span [%s, %s)",
+						tombstones[i].Keys[j].Kind(), tombstones[i].Start, tombstones[i].End))
+				}
+			}
+		}
+	}
+
+	i.Iter.Init(i.cmp, tombstones)
+	i.loaded = true
 }

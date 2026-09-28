@@ -258,6 +258,10 @@ type IterOptions struct {
 
 	// Internal options.
 
+	// pointKey, if non-nil, indicates the iterator is being constructed for a
+	// point read of that key.
+	pointKey []byte
+
 	logger Logger
 	// Layer corresponding to this file. Only passed in if constructed by a
 	// levelIter.

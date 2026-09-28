@@ -37,7 +37,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		context.Background(),
 		b,
 		newIterOpts{snapshot: snapshotIterOpts{seqNum: seqNum}},
-		&IterOptions{Category: categoryGet},
+		&IterOptions{Category: categoryGet, pointKey: key},
 	)
 	if !iter.SeekPrefixGE(key) || !d.opts.Comparer.Equal(iter.Key(), key) {
 		if err := iter.Close(); err != nil {
