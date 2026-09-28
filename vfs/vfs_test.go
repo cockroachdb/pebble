@@ -362,3 +362,61 @@ func TestOpType(t *testing.T) {
 		})
 	}
 }
+
+type closeErrFile struct {
+	File
+	closeErr error
+}
+
+func (f closeErrFile) Close() error {
+	_ = f.File.Close()
+	return f.closeErr
+}
+
+type closeErrFS struct {
+	FS
+	closeErr error
+}
+
+func (fs closeErrFS) Create(name string, category DiskWriteCategory) (File, error) {
+	f, err := fs.FS.Create(name, category)
+	if err != nil {
+		return nil, err
+	}
+	return closeErrFile{File: f, closeErr: fs.closeErr}, nil
+}
+
+func TestCopyCloseError(t *testing.T) {
+	injectedErr := errors.New("injected close error")
+
+	t.Run("CopyAcrossFS", func(t *testing.T) {
+		srcFS := NewMem()
+		require.NoError(t, srcFS.MkdirAll("dir", 0755))
+		f, err := srcFS.Create("dir/src", WriteCategoryUnspecified)
+		require.NoError(t, err)
+		_, err = f.Write([]byte("hello world"))
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+
+		dstFS := closeErrFS{FS: NewMem(), closeErr: injectedErr}
+		require.NoError(t, dstFS.MkdirAll("dir", 0755))
+
+		err = CopyAcrossFS(srcFS, "dir/src", dstFS, "dir/dst")
+		require.ErrorIs(t, err, injectedErr)
+	})
+
+	t.Run("LimitedCopy", func(t *testing.T) {
+		mem := NewMem()
+		require.NoError(t, mem.MkdirAll("dir", 0755))
+		f, err := mem.Create("dir/src", WriteCategoryUnspecified)
+		require.NoError(t, err)
+		_, err = f.Write([]byte("hello world"))
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+
+		fs := closeErrFS{FS: mem, closeErr: injectedErr}
+		err = LimitedCopy(fs, "dir/src", "dir/dst", 100)
+		require.ErrorIs(t, err, injectedErr)
+	})
+}
+
