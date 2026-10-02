@@ -150,11 +150,12 @@ func (m *memTable) init(opts memTableOptions) {
 	}
 	m.writerRefs.Store(1)
 	m.tombstones = keySpanCache{
-		cmp:           m.cmp,
-		formatKey:     m.formatKey,
-		skl:           &m.rangeDelSkl,
-		constructSpan: rangeDelConstructSpan,
-		stats:         opts.rangeDelCacheStats,
+		cmp:                          m.cmp,
+		formatKey:                    m.formatKey,
+		skl:                          &m.rangeDelSkl,
+		constructSpan:                rangeDelConstructSpan,
+		stats:                        opts.rangeDelCacheStats,
+		onlyFragmentOverlappingSpans: true,
 	}
 	m.rangeKeys = keySpanCache{
 		cmp:           m.cmp,
@@ -387,11 +388,14 @@ func rangeDelConstructSpan(
 // kind and a concurrent reader. The reader can load a keySpanFrags and populate
 // it even though is has been invalidated (i.e. replaced with a newer
 // keySpanFrags).
+//
+// If onlyFragmentOverlappingSpans is set, isolated spans are emitted directly.
 func (f *keySpanFrags) get(
 	skl *arenaskl.Skiplist,
 	cmp Compare,
 	formatKey base.FormatKey,
 	constructSpan constructSpan,
+	onlyFragmentOverlappingSpans bool,
 	stats *keySpanCacheStats,
 ) []keyspan.Span {
 	if f.built.Load() {
@@ -405,6 +409,10 @@ func (f *keySpanFrags) get(
 	f.once.Do(func() {
 		ran = true
 		stats.rebuildStarted(f.count)
+		if onlyFragmentOverlappingSpans {
+			f.populateSpans(skl, cmp, formatKey, constructSpan)
+			return
+		}
 		frag := &keyspan.Fragmenter{
 			Cmp:    cmp,
 			Format: formatKey,
@@ -438,6 +446,79 @@ func (f *keySpanFrags) get(
 	return f.spans
 }
 
+// populateSpans populates f.spans with the same fragments as
+// passing every span in skl through one keyspan.Fragmenter, but only runs the
+// Fragmenter over spans that overlap another span.
+//
+// Spans arrive in start key order. Overlapping spans form a run in which each
+// span starts before the largest end key of the spans before it in the run. No
+// fragment crosses a run boundary, so a run of one span is emitted as-is.
+// This requires that the Fragmenter leave a lone span's keys in the
+// order they were decoded, which holds for range deletions since each decodes
+// to a single key.
+func (f *keySpanFrags) populateSpans(
+	skl *arenaskl.Skiplist, cmp Compare, formatKey base.FormatKey, constructSpan constructSpan,
+) {
+	emit := func(s keyspan.Span) {
+		if f.spans == nil {
+			f.spans = make([]keyspan.Span, 0, f.count)
+		}
+		f.spans = append(f.spans, s)
+	}
+	frag := keyspan.Fragmenter{Cmp: cmp, Format: formatKey, Emit: emit}
+
+	// first is the first span of the current run. It's added to frag only
+	// once a second span joins the run.
+	var first keyspan.Span
+	var overlappingSpans int
+	var overlappingSpansEnd []byte
+	emitFirst := func() {
+		// Keys points into keysDst. Cap it so an append to the emitted span
+		// can't overwrite the keys of the span decoded after it.
+		n := len(first.Keys)
+		emit(keyspan.Span{Start: first.Start, End: first.End, Keys: first.Keys[:n:n]})
+	}
+
+	// Concurrent applies may add spans beyond f.count, requiring keysDst to grow.
+	keysDst := make([]keyspan.Key, 0, f.count)
+	it := skl.NewIter(base.DefaultSplit, nil, nil)
+	for kv := it.First(); kv != nil; kv = it.Next() {
+		s, err := constructSpan(kv.K, kv.InPlaceValue(), keysDst)
+		if err != nil {
+			panic(err)
+		}
+		keysDst = s.Keys[len(s.Keys):]
+		if cmp(s.Start, s.End) >= 0 {
+			// The Fragmenter would drop this empty span.
+			continue
+		}
+		if overlappingSpans > 0 && cmp(s.Start, overlappingSpansEnd) < 0 {
+			if overlappingSpans == 1 {
+				frag.Add(first)
+			}
+			frag.Add(s)
+			overlappingSpans++
+			if cmp(s.End, overlappingSpansEnd) > 0 {
+				overlappingSpansEnd = s.End
+			}
+			continue
+		}
+		// s begins a new run, so emit the current one before anything
+		// after it. Every fragment of a multi-span run ends at or before
+		// s.Start, so truncating at s.Start flushes all of them.
+		if overlappingSpans == 1 {
+			emitFirst()
+		} else if overlappingSpans > 1 {
+			frag.Truncate(s.Start)
+		}
+		first, overlappingSpans, overlappingSpansEnd = s, 1, s.End
+	}
+	if overlappingSpans == 1 {
+		emitFirst()
+	}
+	frag.Finish()
+}
+
 // A keySpanCache is used to cache a set of fragmented spans. The cache is
 // invalidated whenever a key of the same kind is added to a memTable, and
 // populated when empty when a span iterator of that key kind is created.
@@ -449,6 +530,9 @@ type keySpanCache struct {
 	constructSpan constructSpan
 	skl           *arenaskl.Skiplist
 	stats         *keySpanCacheStats
+	// onlyFragmentOverlappingSpans emits isolated spans directly and fragments
+	// overlapping spans. It requires each span to decode to a single key.
+	onlyFragmentOverlappingSpans bool
 }
 
 // Invalidate the current set of cached spans, indicating the number of
@@ -481,7 +565,7 @@ func (c *keySpanCache) get() []keyspan.Span {
 	if frags == nil {
 		return nil
 	}
-	return frags.get(c.skl, c.cmp, c.formatKey, c.constructSpan, c.stats)
+	return frags.get(c.skl, c.cmp, c.formatKey, c.constructSpan, c.onlyFragmentOverlappingSpans, c.stats)
 }
 
 // keySpanCacheStats records how often keySpanCaches are invalidated and
