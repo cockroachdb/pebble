@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -19,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func memTableEntrySize(keyBytes, valueBytes int) uint64 {
@@ -108,6 +110,9 @@ type memTableOptions struct {
 	size                         int
 	logSeqNum                    base.SeqNum
 	releaseAccountingReservation func()
+	// DB-created memtables share the DB's range-deletion cache stats.
+	// Standalone test memtables may leave this nil to skip collection.
+	rangeDelCacheStats *keySpanCacheStats
 }
 
 func checkMemTable(obj interface{}) {
@@ -149,6 +154,7 @@ func (m *memTable) init(opts memTableOptions) {
 		formatKey:     m.formatKey,
 		skl:           &m.rangeDelSkl,
 		constructSpan: rangeDelConstructSpan,
+		stats:         opts.rangeDelCacheStats,
 	}
 	m.rangeKeys = keySpanCache{
 		cmp:           m.cmp,
@@ -359,6 +365,9 @@ func (m *memTable) computePossibleOverlaps(fn func(bounded) shouldContinue, boun
 type keySpanFrags struct {
 	count uint32
 	once  sync.Once
+	// built is set once the spans have been populated. It lets get skip the
+	// timing and bookkeeping that surround once.Do on the slow path.
+	built atomic.Bool
 	spans []keyspan.Span
 }
 
@@ -379,9 +388,23 @@ func rangeDelConstructSpan(
 // it even though is has been invalidated (i.e. replaced with a newer
 // keySpanFrags).
 func (f *keySpanFrags) get(
-	skl *arenaskl.Skiplist, cmp Compare, formatKey base.FormatKey, constructSpan constructSpan,
+	skl *arenaskl.Skiplist,
+	cmp Compare,
+	formatKey base.FormatKey,
+	constructSpan constructSpan,
+	stats *keySpanCacheStats,
 ) []keyspan.Span {
+	if f.built.Load() {
+		return f.spans
+	}
+	var start crtime.Mono
+	if stats != nil {
+		start = crtime.NowMono()
+	}
+	var ran bool
 	f.once.Do(func() {
+		ran = true
+		stats.rebuildStarted(f.count)
 		frag := &keyspan.Fragmenter{
 			Cmp:    cmp,
 			Format: formatKey,
@@ -406,6 +429,12 @@ func (f *keySpanFrags) get(
 		}
 		frag.Finish()
 	})
+	if ran {
+		f.built.Store(true)
+		stats.rebuildFinished(start, len(f.spans))
+	} else {
+		stats.readerWaited(start)
+	}
 	return f.spans
 }
 
@@ -419,11 +448,13 @@ type keySpanCache struct {
 	formatKey     base.FormatKey
 	constructSpan constructSpan
 	skl           *arenaskl.Skiplist
+	stats         *keySpanCacheStats
 }
 
 // Invalidate the current set of cached spans, indicating the number of
 // spans that were added.
 func (c *keySpanCache) invalidate(count uint32) {
+	c.stats.invalidated()
 	newCount := c.count.Add(count)
 	var frags *keySpanFrags
 
@@ -450,5 +481,96 @@ func (c *keySpanCache) get() []keyspan.Span {
 	if frags == nil {
 		return nil
 	}
-	return frags.get(c.skl, c.cmp, c.formatKey, c.constructSpan)
+	return frags.get(c.skl, c.cmp, c.formatKey, c.constructSpan, c.stats)
+}
+
+// keySpanCacheStats records how often keySpanCaches are invalidated and
+// rebuilt, and how long readers wait on a rebuild. A single instance is owned
+// by the DB and shared by the range deletion caches of all its memtables. All
+// methods are safe to call on a nil receiver, in which case they do nothing.
+type keySpanCacheStats struct {
+	// The duration histograms observe float64(time.Duration), i.e. nanoseconds.
+	rebuildDuration    prometheus.Histogram
+	readerWait         prometheus.Histogram
+	rebuildTombstones  prometheus.Histogram
+	rebuildFragments   prometheus.Histogram
+	concurrentRebuilds prometheus.Histogram
+
+	invalidations atomic.Uint64
+	// rebuildsInFlight is the number of rebuilds currently running.
+	rebuildsInFlight atomic.Int64
+}
+
+func newKeySpanCacheStats() *keySpanCacheStats {
+	return &keySpanCacheStats{
+		rebuildDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheDurationBuckets,
+		}),
+		readerWait: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheDurationBuckets,
+		}),
+		rebuildTombstones: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheCountBuckets,
+		}),
+		rebuildFragments: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheCountBuckets,
+		}),
+		concurrentRebuilds: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheConcurrencyBuckets,
+		}),
+	}
+}
+
+// invalidated records a call to keySpanCache.invalidate.
+func (s *keySpanCacheStats) invalidated() {
+	if s == nil {
+		return
+	}
+	s.invalidations.Add(1)
+}
+
+// rebuildStarted records the start of a rebuild of a keySpanFrags whose
+// memtable held the given number of tombstones when the frags were created.
+func (s *keySpanCacheStats) rebuildStarted(tombstones uint32) {
+	if s == nil {
+		return
+	}
+	s.concurrentRebuilds.Observe(float64(s.rebuildsInFlight.Add(1)))
+	s.rebuildTombstones.Observe(float64(tombstones))
+}
+
+// rebuildFinished records the end of a rebuild that began at start and produced
+// numFragments fragments.
+func (s *keySpanCacheStats) rebuildFinished(start crtime.Mono, numFragments int) {
+	if s == nil {
+		return
+	}
+	s.rebuildsInFlight.Add(-1)
+	s.rebuildDuration.Observe(float64(start.Elapsed()))
+	s.rebuildFragments.Observe(float64(numFragments))
+}
+
+// readerWaited records that a reader spent the time since start inside
+// sync.Once.Do without running the rebuild itself.
+func (s *keySpanCacheStats) readerWaited(start crtime.Mono) {
+	if s == nil {
+		return
+	}
+	s.readerWait.Observe(float64(start.Elapsed()))
+}
+
+// metrics returns the exported view of the stats. The returned histograms are
+// the live ones, not copies.
+func (s *keySpanCacheStats) metrics() MemTableRangeDelCacheMetrics {
+	if s == nil {
+		return MemTableRangeDelCacheMetrics{}
+	}
+	return MemTableRangeDelCacheMetrics{
+		RebuildDuration:    s.rebuildDuration,
+		ReaderWait:         s.readerWait,
+		RebuildTombstones:  s.rebuildTombstones,
+		RebuildFragments:   s.rebuildFragments,
+		ConcurrentRebuilds: s.concurrentRebuilds,
+		Invalidations:      s.invalidations.Load(),
+	}
 }

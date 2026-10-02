@@ -11,6 +11,7 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode"
@@ -22,7 +23,10 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/prometheus/client_golang/prometheus"
+	prometheusgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -373,6 +377,221 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+}
+
+// histogramSamples returns the number of samples recorded by h and their sum.
+func histogramSamples(t testing.TB, h prometheus.Histogram) (count uint64, sum float64) {
+	t.Helper()
+	require.NotNil(t, h)
+	var m prometheusgo.Metric
+	require.NoError(t, h.Write(&m))
+	return m.GetHistogram().GetSampleCount(), m.GetHistogram().GetSampleSum()
+}
+
+// rangeDelCacheSamples summarizes the sample counts and sums of the
+// histograms in MemTableRangeDelCacheMetrics.
+type rangeDelCacheSamples struct {
+	invalidations uint64
+	// rebuilds is the sample count of RebuildDuration. The count of every
+	// histogram other than ReaderWait must equal it.
+	rebuilds       uint64
+	readerWaits    uint64
+	tombstonesSum  float64
+	fragmentsSum   float64
+	concurrencySum float64
+}
+
+func readRangeDelCacheSamples(t testing.TB, m MemTableRangeDelCacheMetrics) rangeDelCacheSamples {
+	t.Helper()
+	s := rangeDelCacheSamples{invalidations: m.Invalidations}
+	s.rebuilds, _ = histogramSamples(t, m.RebuildDuration)
+	s.readerWaits, _ = histogramSamples(t, m.ReaderWait)
+	var n uint64
+	n, s.tombstonesSum = histogramSamples(t, m.RebuildTombstones)
+	require.Equal(t, s.rebuilds, n)
+	n, s.fragmentsSum = histogramSamples(t, m.RebuildFragments)
+	require.Equal(t, s.rebuilds, n)
+	n, s.concurrencySum = histogramSamples(t, m.ConcurrentRebuilds)
+	require.Equal(t, s.rebuilds, n)
+	return s
+}
+
+func TestMemTableRangeDelCacheStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	stats := newKeySpanCacheStats()
+	m := newMemTable(memTableOptions{rangeDelCacheStats: stats})
+
+	seqNum := base.SeqNum(1)
+	apply := func(fn func(b *Batch)) {
+		t.Helper()
+		b := newBatch(nil)
+		defer b.Close()
+		fn(b)
+		require.NoError(t, m.apply(b, seqNum))
+		seqNum += base.SeqNum(b.Count())
+	}
+	// read creates a range deletion iterator and returns the number of
+	// fragments it contains.
+	read := func() (fragments int) {
+		t.Helper()
+		it := m.newRangeDelIter(nil)
+		require.NotNil(t, it)
+		defer it.Close()
+		for s, err := it.First(); s != nil; s, err = it.Next() {
+			require.NoError(t, err)
+			fragments++
+		}
+		return fragments
+	}
+	samples := func() rangeDelCacheSamples {
+		t.Helper()
+		return readRangeDelCacheSamples(t, stats.metrics())
+	}
+
+	// Nothing has been recorded before any range deletion is applied, and
+	// there is no cache to build.
+	require.Equal(t, rangeDelCacheSamples{}, samples())
+	require.Nil(t, m.newRangeDelIter(nil))
+	require.Equal(t, rangeDelCacheSamples{}, samples())
+
+	// Applying a range deletion invalidates the cache but does not build it.
+	apply(func(b *Batch) { require.NoError(t, b.DeleteRange([]byte("a"), []byte("c"), nil)) })
+	require.Equal(t, rangeDelCacheSamples{invalidations: 1}, samples())
+
+	// The first read builds the cache.
+	require.Equal(t, 1, read())
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 1, rebuilds: 1, tombstonesSum: 1, fragmentsSum: 1, concurrencySum: 1,
+	}, samples())
+
+	// Reads of the built cache record nothing.
+	for i := 0; i < 3; i++ {
+		require.Equal(t, 1, read())
+	}
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 1, rebuilds: 1, tombstonesSum: 1, fragmentsSum: 1, concurrencySum: 1,
+	}, samples())
+
+	// Batches without range deletions leave the cache and the stats alone.
+	apply(func(b *Batch) { require.NoError(t, b.Set([]byte("a"), []byte("v"), nil)) })
+	apply(func(b *Batch) {
+		require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, []byte("v"), nil))
+	})
+	require.NotNil(t, m.newRangeKeyIter(nil))
+	require.Equal(t, 1, read())
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 1, rebuilds: 1, tombstonesSum: 1, fragmentsSum: 1, concurrencySum: 1,
+	}, samples())
+
+	// A batch with two range deletions invalidates once, and the rebuild sees
+	// all three tombstones: [a,c), [b,d), [c,e) fragment into [a,b), [b,c),
+	// [c,d), [d,e).
+	apply(func(b *Batch) {
+		require.NoError(t, b.DeleteRange([]byte("b"), []byte("d"), nil))
+		require.NoError(t, b.DeleteRange([]byte("c"), []byte("e"), nil))
+	})
+	require.Equal(t, uint64(2), samples().invalidations)
+	require.Equal(t, 4, read())
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 2, rebuilds: 2, tombstonesSum: 1 + 3, fragmentsSum: 1 + 4, concurrencySum: 2,
+	}, samples())
+
+	// Several invalidations between reads are absorbed by a single rebuild.
+	apply(func(b *Batch) { require.NoError(t, b.DeleteRange([]byte("e"), []byte("f"), nil)) })
+	apply(func(b *Batch) { require.NoError(t, b.DeleteRange([]byte("f"), []byte("g"), nil)) })
+	require.Equal(t, uint64(4), samples().invalidations)
+	require.Equal(t, 6, read())
+	require.Equal(t, 6, read())
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 4, rebuilds: 3, tombstonesSum: 1 + 3 + 5, fragmentsSum: 1 + 4 + 6,
+		concurrencySum: 3,
+	}, samples())
+
+	// Nothing above waited on another goroutine's rebuild.
+	require.Equal(t, uint64(0), samples().readerWaits)
+}
+
+// TestMemTableRangeDelCacheStatsNil checks that a memtable without stats
+// invalidates and rebuilds its cache.
+func TestMemTableRangeDelCacheStatsNil(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	m := newMemTable(memTableOptions{})
+	b := newBatch(nil)
+	defer b.Close()
+	require.NoError(t, b.DeleteRange([]byte("a"), []byte("c"), nil))
+	require.NoError(t, m.apply(b, 1))
+	it := m.newRangeDelIter(nil)
+	require.NotNil(t, it)
+	s, err := it.First()
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	it.Close()
+	require.Equal(t, MemTableRangeDelCacheMetrics{}, (*keySpanCacheStats)(nil).metrics())
+}
+
+// TestMemTableRangeDelCacheConcurrentRebuilds blocks rebuilds of two
+// keySpanFrags in the middle of their build to observe rebuilds in flight, and
+// races readers against a rebuild.
+func TestMemTableRangeDelCacheConcurrentRebuilds(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	stats := newKeySpanCacheStats()
+	m := newMemTable(memTableOptions{rangeDelCacheStats: stats})
+	b := newBatch(nil)
+	defer b.Close()
+	require.NoError(t, b.DeleteRange([]byte("a"), []byte("c"), nil))
+	require.NoError(t, m.apply(b, 1))
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	blockingConstructSpan := func(
+		ik base.InternalKey, v []byte, keysDst []keyspan.Key,
+	) (keyspan.Span, error) {
+		started <- struct{}{}
+		<-release
+		return rangeDelConstructSpan(ik, v, keysDst)
+	}
+	get := func(f *keySpanFrags) []keyspan.Span {
+		return f.get(&m.rangeDelSkl, m.cmp, m.formatKey, blockingConstructSpan, stats)
+	}
+
+	// Start a rebuild of first and wait for it to block inside the build. Then
+	// start a rebuild of a second keySpanFrags: it observes the first one in
+	// flight. Readers of first race with its rebuild.
+	first, second := &keySpanFrags{count: 1}, &keySpanFrags{count: 1}
+	const readers = 8
+	var wg sync.WaitGroup
+	spans := make([][]keyspan.Span, readers+2)
+	wg.Add(1)
+	go func() { defer wg.Done(); spans[0] = get(first) }()
+	<-started
+	wg.Add(1)
+	go func() { defer wg.Done(); spans[1] = get(second) }()
+	<-started
+	for i := 0; i < readers; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); spans[2+i] = get(first) }()
+	}
+	close(release)
+	wg.Wait()
+
+	for i := range spans {
+		require.Len(t, spans[i], 1)
+	}
+	s := readRangeDelCacheSamples(t, stats.metrics())
+	require.Equal(t, uint64(2), s.rebuilds)
+	// The first rebuild saw itself in flight; the second saw both.
+	require.Equal(t, float64(1+2), s.concurrencySum)
+	require.Equal(t, float64(2), s.tombstonesSum)
+	require.Equal(t, float64(2), s.fragmentsSum)
+	// Each reader either waited for the rebuild or found it already built.
+	require.LessOrEqual(t, s.readerWaits, uint64(readers))
+	require.Equal(t, int64(0), stats.rebuildsInFlight.Load())
+	require.True(t, first.built.Load())
+	require.True(t, second.built.Load())
+
+	// Reads of a built keySpanFrags record nothing further.
+	require.Len(t, get(first), 1)
+	require.Equal(t, s, readRangeDelCacheSamples(t, stats.metrics()))
 }
 
 func TestMemTableReserved(t *testing.T) {

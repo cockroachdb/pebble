@@ -637,6 +637,35 @@ func TestRemoteTablesTotalWithVirtualSSTables(t *testing.T) {
 	require.Equal(t, uint64(0), cs.Bytes, "expected zero remote table bytes")
 }
 
+// TestMetricsMemTableRangeDelCache checks that DB.Metrics exposes the stats for
+// the memtable range deletion cache from the moment the DB is opened, and that
+// a DeleteRange followed by a Get is recorded.
+func TestMetricsMemTableRangeDelCache(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	d, err := Open("", &Options{FS: vfs.NewMem(), Logger: testutils.Logger{T: t}})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// readRangeDelCacheSamples requires every histogram to be non-nil.
+	m := d.Metrics().MemTableRangeDelCache
+	require.Equal(t, rangeDelCacheSamples{}, readRangeDelCacheSamples(t, m))
+
+	require.NoError(t, d.Set([]byte("b"), []byte("v"), nil))
+	require.NoError(t, d.DeleteRange([]byte("a"), []byte("c"), nil))
+	_, _, err = d.Get([]byte("b"))
+	require.ErrorIs(t, err, ErrNotFound)
+
+	want := rangeDelCacheSamples{
+		invalidations: 1, rebuilds: 1, tombstonesSum: 1, fragmentsSum: 1, concurrencySum: 1,
+	}
+	require.Equal(t, want, readRangeDelCacheSamples(t, d.Metrics().MemTableRangeDelCache))
+
+	// A second Get finds the cache built and records nothing.
+	_, _, err = d.Get([]byte("b"))
+	require.ErrorIs(t, err, ErrNotFound)
+	require.Equal(t, want, readRangeDelCacheSamples(t, d.Metrics().MemTableRangeDelCache))
+}
+
 func TestMetricsWAmpDisableWAL(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	d, err := Open("", &Options{FS: vfs.NewMem(), DisableWAL: true, Logger: testutils.Logger{T: t}})
