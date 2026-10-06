@@ -16,9 +16,9 @@ L2:
 file-sizes
 ----
 L1:
-  000004:[b#11,SET-c#11,SET]: 698 bytes (698B)
+  000004:[b#11,SET-c#11,SET]: 725 bytes (725B)
 L2:
-  000005:[c#0,SET-d#0,SET]: 693 bytes (693B)
+  000005:[c#0,SET-d#0,SET]: 720 bytes (720B)
 
 pick-file L1
 ----
@@ -131,12 +131,12 @@ L6:
 file-sizes
 ----
 L5:
-  000004:[c#11,SET-e#11,SET]: 99326 bytes (97KB)
-  000005:[f#11,SET-f#11,SET]: 58047 bytes (57KB)
+  000004:[c#11,SET-e#11,SET]: 99353 bytes (97KB)
+  000005:[f#11,SET-f#11,SET]: 58074 bytes (57KB)
 L6:
-  000006:[c#0,SET-c#0,SET]: 66241 bytes (65KB)
-  000007:[e#0,SET-e#0,SET]: 66241 bytes (65KB)
-  000008:[f#0,SET-f#0,SET]: 66241 bytes (65KB)
+  000006:[c#0,SET-c#0,SET]: 66268 bytes (65KB)
+  000007:[e#0,SET-e#0,SET]: 66268 bytes (65KB)
+  000008:[f#0,SET-f#0,SET]: 66268 bytes (65KB)
 
 # Sst 5 is picked since 65KB/57KB is less than 130KB/97KB.
 pick-file L5
@@ -168,12 +168,12 @@ file-sizes
 L5:
   000010:[c#11,SET-c#11,SET]: 32862 bytes (32KB)
   000011:[e#11,SET-e#11,SET]: 191 bytes (191B)
-  000005:[f#11,SET-f#11,SET]: 58047 bytes (57KB)
+  000005:[f#11,SET-f#11,SET]: 58074 bytes (57KB)
 L6:
-  000006:[c#0,SET-c#0,SET]: 66241 bytes (65KB)
-  000009:[d#13,SET-d#13,SET]: 655 bytes (655B)
-  000007:[e#0,SET-e#0,SET]: 66241 bytes (65KB)
-  000008:[f#0,SET-f#0,SET]: 66241 bytes (65KB)
+  000006:[c#0,SET-c#0,SET]: 66268 bytes (65KB)
+  000009:[d#13,SET-d#13,SET]: 675 bytes (675B)
+  000007:[e#0,SET-e#0,SET]: 66268 bytes (65KB)
+  000008:[f#0,SET-f#0,SET]: 66268 bytes (65KB)
 
 # Superficially, sst 10 causes write amp of 65KB/32KB which is worse than sst
 # 5. But the garbage of ~64KB in the backing sst 4 is equally distributed
@@ -207,12 +207,12 @@ file-sizes
 ----
 L5:
   000011:[e#11,SET-e#11,SET]: 191 bytes (191B)
-  000005:[f#11,SET-f#11,SET]: 58047 bytes (57KB)
+  000005:[f#11,SET-f#11,SET]: 58074 bytes (57KB)
 L6:
-  000012:[c#15,SET-c#15,SET]: 655 bytes (655B)
-  000009:[d#13,SET-d#13,SET]: 655 bytes (655B)
-  000007:[e#0,SET-e#0,SET]: 66241 bytes (65KB)
-  000008:[f#0,SET-f#0,SET]: 66241 bytes (65KB)
+  000012:[c#15,SET-c#15,SET]: 675 bytes (675B)
+  000009:[d#13,SET-d#13,SET]: 675 bytes (675B)
+  000007:[e#0,SET-e#0,SET]: 66268 bytes (65KB)
+  000008:[f#0,SET-f#0,SET]: 66268 bytes (65KB)
 
 # Even though picking sst 11 seems to cause poor write amp of 65KB/126B, it is
 # picked because it is blamed for all the garbage in backing sst 4 (~96KB),
@@ -332,11 +332,11 @@ Blob files:
 file-sizes
 ----
 L5:
-  000004:[a#11,SET-a#11,SET]: 1699 bytes (1.7KB)
-  000005:[c#11,SET-c#11,SET]: 1699 bytes (1.7KB)
+  000004:[a#11,SET-a#11,SET]: 1726 bytes (1.7KB)
+  000005:[c#11,SET-c#11,SET]: 1726 bytes (1.7KB)
 L6:
-  000006:[a#0,SET-a#0,SET]: 786 bytes (786B)
-  000007:[c#0,SET-c#0,SET]: 50695 bytes (50KB)
+  000006:[a#0,SET-a#0,SET]: 803 bytes (803B)
+  000007:[c#0,SET-c#0,SET]: 50722 bytes (50KB)
 
 pick-file L5
 ----

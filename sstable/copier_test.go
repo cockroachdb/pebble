@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -298,6 +299,108 @@ func TestCopySpanCompressionStats(t *testing.T) {
 			require.Contains(t, warm, profile.DataBlocks.Setting.String()+":")
 			require.Equal(t, warm, copySpan(0, 0), "cold cache")
 			require.Equal(t, warm, copySpan(400, 600), "partially warm cache")
+		})
+	}
+}
+
+// TestCopySpanMaxUserKeySize verifies that a table produced by CopySpan carries
+// over the MaxUserKeySize property of the source table (which is an upper
+// bound for the copied keys), and that the output lacks the property if the
+// source lacks it.
+func TestCopySpanMaxUserKeySize(t *testing.T) {
+	blockCache := cache.New(1 << 20 /* 1 MB */)
+	defer blockCache.Unref()
+	cacheHandle := blockCache.NewHandle()
+	defer cacheHandle.Close()
+	nextFileNum := base.DiskFileNum(1)
+
+	longKey := strings.Repeat("b", 20) + "@1"
+	readerOpts := ReaderOptions{
+		Comparer:   testkeys.Comparer,
+		KeySchemas: KeySchemas{testkeysSchema.Name: &testkeysSchema},
+	}
+	testCases := []struct {
+		name string
+		// rangeDel adds a range deletion to the source table, which causes
+		// CopySpan to copy the entire file.
+		rangeDel bool
+		// sourceLacksProp simulates a source table written by a Pebble version
+		// that did not record the property.
+		sourceLacksProp bool
+	}{
+		{name: "copy-blocks"},
+		{name: "copy-blocks-source-lacks-prop", sourceLacksProp: true},
+		{name: "copy-whole-file", rangeDel: true},
+		{name: "copy-whole-file-source-lacks-prop", rangeDel: true, sourceLacksProp: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			for tf := TableFormatPebblev1; tf <= TableFormatMax; tf++ {
+				t.Run(tf.String(), func(t *testing.T) {
+					obj := &objstorage.MemObj{}
+					w := NewRawWriter(obj, WriterOptions{
+						BlockSize:      1,
+						IndexBlockSize: 1,
+						TableFormat:    tf,
+						Comparer:       testkeys.Comparer,
+						KeySchema:      &testkeysSchema,
+					})
+					for _, k := range []string{"a@1", longKey, "c@1", "d@1", "e@1"} {
+						require.NoError(t, w.Add(
+							base.MakeInternalKey([]byte(k), 1, base.InternalKeyKindSet), []byte("val"),
+							false /* forceObsolete */, base.KVMeta{}))
+					}
+					if tc.rangeDel {
+						require.NoError(t, w.EncodeSpan(keyspan.Span{
+							Start: []byte("x"),
+							End:   []byte("y"),
+							Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeDelete)}},
+						}))
+					}
+					if tc.sourceLacksProp {
+						clearMaxUserKeySize(t, w)
+					}
+					require.NoError(t, w.Close())
+
+					rOpts := readerOpts
+					rOpts.CacheOpts = sstableinternal.CacheOptions{
+						CacheHandle: cacheHandle,
+						FileNum:     nextFileNum,
+					}
+					nextFileNum++
+					r, err := NewMemReader(obj.Data(), rOpts)
+					require.NoError(t, err)
+					defer func() { require.NoError(t, r.Close()) }()
+					srcProp, srcPresent := readMaxUserKeySizeProp(t, r)
+					require.Equal(t, !tc.sourceLacksProp, srcPresent)
+					if srcPresent {
+						require.Equal(t, uint64(len(longKey)), srcProp)
+					}
+
+					output := &objstorage.MemObj{}
+					_, outProps, err := CopySpan(context.Background(), newMemReader(obj.Data()), r, 0, /* level */
+						output, WriterOptions{Comparer: testkeys.Comparer, KeySchema: &testkeysSchema},
+						base.MakeInternalKey([]byte("c@1"), base.SeqNumMax, base.InternalKeyKindMax),
+						base.MakeInternalKey([]byte("d@1"), 0, base.InternalKeyKindSet))
+					require.NoError(t, err)
+
+					outReader, err := NewMemReader(output.Data(), readerOpts)
+					require.NoError(t, err)
+					defer func() { require.NoError(t, outReader.Close()) }()
+					if !tc.rangeDel {
+						// The output does not contain the longest key, so the
+						// property is a strict upper bound.
+						require.Less(t, maxUserKeySizeFromContents(t, outReader), uint64(len(longKey)))
+					} else {
+						require.Equal(t, obj.Data(), output.Data())
+					}
+					got, present := readMaxUserKeySizeProp(t, outReader)
+					require.Equal(t, srcPresent, present)
+					require.Equal(t, srcProp, got)
+					// The returned properties match the written ones.
+					require.Equal(t, got, outProps.MaxUserKeySize)
+				})
+			}
 		})
 	}
 }

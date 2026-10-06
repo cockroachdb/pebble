@@ -6,9 +6,9 @@ L1
   d#0,SET:foo
 ----
 L0.0:
-  000004:[c#11,SET-c#11,SET] seqnums:[#11-#11] points:[c#11,SET-c#11,SET] size:685
+  000004:[c#11,SET-c#11,SET] seqnums:[#11-#11] points:[c#11,SET-c#11,SET] size:709
 L1:
-  000005:[c#0,SET-d#0,SET] seqnums:[#0-#0] points:[c#0,SET-d#0,SET] size:696
+  000005:[c#0,SET-d#0,SET] seqnums:[#0-#0] points:[c#0,SET-d#0,SET] size:720
 
 mark-for-compaction file=000005
 ----
@@ -20,12 +20,12 @@ marked L0.000004
 
 maybe-compact
 ----
-[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L1 [000005] (696B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000006(696B)] (696B), in 1.0s (2.0s total), output rate 696B/s
-[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L0 [000004] (685B) Score=0.00 + L0 [] (0B) Score=0.00 -> L0 [000007(685B)] (685B), in 1.0s (2.0s total), output rate 685B/s
+[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L1 [000005] (720B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000006(720B)] (720B), in 1.0s (2.0s total), output rate 720B/s
+[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L0 [000004] (709B) Score=0.00 + L0 [] (0B) Score=0.00 -> L0 [000007(709B)] (709B), in 1.0s (2.0s total), output rate 709B/s
 L0.0:
-  000007:[c#11,SET-c#11,SET] seqnums:[#11-#11] points:[c#11,SET-c#11,SET] size:685
+  000007:[c#11,SET-c#11,SET] seqnums:[#11-#11] points:[c#11,SET-c#11,SET] size:709
 L1:
-  000006:[c#0,SET-d#0,SET] seqnums:[#0-#0] points:[c#0,SET-d#0,SET] size:696
+  000006:[c#0,SET-d#0,SET] seqnums:[#0-#0] points:[c#0,SET-d#0,SET] size:720
 
 mark-for-compaction file=000006
 ----
@@ -41,12 +41,12 @@ reopen
 
 maybe-compact
 ----
-[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L1 [000006] (696B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000012(696B)] (696B), in 1.0s (2.0s total), output rate 696B/s
-[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L0 [000007] (685B) Score=0.00 + L0 [] (0B) Score=0.00 -> L0 [000013(685B)] (685B), in 1.0s (2.0s total), output rate 685B/s
+[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L1 [000006] (720B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000012(720B)] (720B), in 1.0s (2.0s total), output rate 720B/s
+[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L0 [000007] (709B) Score=0.00 + L0 [] (0B) Score=0.00 -> L0 [000013(709B)] (709B), in 1.0s (2.0s total), output rate 709B/s
 L0.0:
-  000013:[c#11,SET-c#11,SET] seqnums:[#11-#11] points:[c#11,SET-c#11,SET] size:685
+  000013:[c#11,SET-c#11,SET] seqnums:[#11-#11] points:[c#11,SET-c#11,SET] size:709
 L1:
-  000012:[c#0,SET-d#0,SET] seqnums:[#0-#0] points:[c#0,SET-d#0,SET] size:696
+  000012:[c#0,SET-d#0,SET] seqnums:[#0-#0] points:[c#0,SET-d#0,SET] size:720
 
 mark-for-compaction file=000012
 ----
@@ -66,9 +66,9 @@ reopen
 
 maybe-compact
 ----
-[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L1 [000012] (696B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000019(696B)] (696B), in 1.0s (2.0s total), output rate 696B/s
-[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L0 [000013] (685B) Score=0.00 + L0 [] (0B) Score=0.00 -> L0 [000020(685B)] (685B), in 1.0s (2.0s total), output rate 685B/s
+[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L1 [000012] (720B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000019(720B)] (720B), in 1.0s (2.0s total), output rate 720B/s
+[JOB 100] compacted(rewrite) write-blobs-input-depth-zero L0 [000013] (709B) Score=0.00 + L0 [] (0B) Score=0.00 -> L0 [000020(709B)] (709B), in 1.0s (2.0s total), output rate 709B/s
 L0.0:
-  000020:[c#11,SET-c#11,SET] seqnums:[#11-#11] points:[c#11,SET-c#11,SET] size:685
+  000020:[c#11,SET-c#11,SET] seqnums:[#11-#11] points:[c#11,SET-c#11,SET] size:709
 L1:
-  000019:[c#0,SET-d#0,SET] seqnums:[#0-#0] points:[c#0,SET-d#0,SET] size:696
+  000019:[c#0,SET-d#0,SET] seqnums:[#0-#0] points:[c#0,SET-d#0,SET] size:720

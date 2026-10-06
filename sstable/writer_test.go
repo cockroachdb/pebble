@@ -11,10 +11,12 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/crlib/crstrings"
@@ -25,10 +27,12 @@ import (
 	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
@@ -1419,4 +1423,484 @@ func runWriterBench(b *testing.B, keys [][]byte, comparer *base.Comparer, format
 			}
 		})
 	}
+}
+
+// readMaxUserKeySizeProp reads the properties block of the table and returns
+// the MaxUserKeySize property, along with whether the property is present in
+// the table.
+func readMaxUserKeySizeProp(t *testing.T, r *Reader) (_ uint64, present bool) {
+	t.Helper()
+	props, err := r.ReadPropertiesBlock(context.Background(), nil /* buffer pool */)
+	require.NoError(t, err)
+	present = props.isLoaded(_bit_MaxUserKeySize)
+	// The property is only serialized when it is non-zero.
+	require.Equal(t, present, props.MaxUserKeySize != 0)
+	require.Equal(t, present, strings.Contains(props.String(), "pebble.max.user-key.size:"))
+	if present {
+		require.Contains(t, props.String(), fmt.Sprintf("pebble.max.user-key.size: %d\n", props.MaxUserKeySize))
+	}
+	return props.MaxUserKeySize, present
+}
+
+// maxUserKeySizeFromContents returns the size of the largest user key in the
+// table, considering point keys as well as the bounds of range deletions and
+// range keys, by iterating over the table's contents.
+func maxUserKeySizeFromContents(t *testing.T, r *Reader) uint64 {
+	t.Helper()
+	var res uint64
+	iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, DebugHandlesBlobContext)
+	require.NoError(t, err)
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		res = max(res, uint64(len(kv.K.UserKey)))
+	}
+	require.NoError(t, iter.Close())
+
+	newSpanIters := []func(context.Context, FragmentIterTransforms, ReadEnv) (keyspan.FragmentIterator, error){
+		r.NewRawRangeDelIter,
+		r.NewRawRangeKeyIter,
+	}
+	for _, newSpanIter := range newSpanIters {
+		spanIter, err := newSpanIter(context.Background(), NoFragmentTransforms, NoReadEnv)
+		require.NoError(t, err)
+		if spanIter == nil {
+			continue
+		}
+		s, err := spanIter.First()
+		for ; s != nil; s, err = spanIter.Next() {
+			res = max(res, uint64(len(s.Start)), uint64(len(s.End)))
+		}
+		require.NoError(t, err)
+		spanIter.Close()
+	}
+	return res
+}
+
+// clearMaxUserKeySize resets the MaxUserKeySize property accumulated so far by
+// the given raw writer. If called right before Close, it simulates a table
+// written by a Pebble version that did not record the property.
+func clearMaxUserKeySize(t *testing.T, w RawWriter) {
+	t.Helper()
+	switch w := w.(type) {
+	case *RawRowWriter:
+		w.props.MaxUserKeySize = 0
+	case *RawColumnWriter:
+		w.props.MaxUserKeySize = 0
+	default:
+		t.Fatalf("unexpected raw writer type %T", w)
+	}
+}
+
+// TestWriterMaxUserKeySize tests the MaxUserKeySize property
+// (pebble.max.user-key.size) as computed by the row-based and the columnar
+// writers, across all table formats.
+func TestWriterMaxUserKeySize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	key := func(c byte, n int) []byte {
+		return bytes.Repeat([]byte{c}, n)
+	}
+	firstErr := func(errs ...error) error {
+		for _, err := range errs {
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	rangeDelSpanAt := func(seqNum base.SeqNum, start, end []byte) keyspan.Span {
+		return keyspan.Span{
+			Start: start,
+			End:   end,
+			Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(seqNum, base.InternalKeyKindRangeDelete)}},
+		}
+	}
+	rangeDelSpan := func(start, end []byte) keyspan.Span {
+		return rangeDelSpanAt(1, start, end)
+	}
+	rangeKeySpan := func(start, end []byte) keyspan.Span {
+		return keyspan.Span{
+			Start: start,
+			End:   end,
+			Keys: []keyspan.Key{{
+				Trailer: base.MakeTrailer(1, base.InternalKeyKindRangeKeySet),
+				Suffix:  []byte("@5"),
+				Value:   []byte("val"),
+			}},
+		}
+	}
+	readerOpts := ReaderOptions{
+		Comparer:   testkeys.Comparer,
+		KeySchemas: KeySchemas{testkeysSchema.Name: &testkeysSchema},
+	}
+
+	// check builds a table using the given write function and verifies the
+	// property (both in the writer metadata and in the properties block).
+	check := func(
+		t *testing.T, opts WriterOptions, write func(w *Writer) error, expected uint64,
+	) {
+		t.Helper()
+		obj := &objstorage.MemObj{}
+		w := NewWriter(obj, opts)
+		require.NoError(t, write(w))
+		require.NoError(t, w.Close())
+		meta, err := w.Metadata()
+		require.NoError(t, err)
+
+		r, err := NewMemReader(obj.Data(), readerOpts)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, r.Close()) }()
+		// Sanity check the expected value against the table contents.
+		require.Equal(t, expected, maxUserKeySizeFromContents(t, r))
+
+		got, present := readMaxUserKeySizeProp(t, r)
+		if opts.TableFormat < TableFormatPebblev1 {
+			// The property is omitted for RocksDB formats, for byte-for-byte
+			// equivalence with RocksDB files.
+			require.False(t, present)
+			return
+		}
+		// A zero value is indistinguishable from "unknown" and is not serialized.
+		require.Equal(t, expected != 0, present)
+		require.Equal(t, expected, got)
+		require.Equal(t, expected, meta.Properties.MaxUserKeySize)
+	}
+
+	testCases := []struct {
+		name string
+		// minFormat and maxFormat (if non-zero) restrict the table formats
+		// the test case applies to (inclusive).
+		minFormat, maxFormat TableFormat
+		opts                 func(*WriterOptions)
+		write                func(w *Writer) error
+		expected             uint64
+	}{
+		{
+			name: "point-set",
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.Set(append(key('b', 10), "@1"...), []byte("val")),
+					w.Set([]byte("c@1"), []byte("val")),
+				)
+			},
+			expected: 12,
+		},
+		{
+			name: "point-kinds",
+			write: func(w *Writer) error {
+				rw := w.Raw()
+				for _, kv := range []struct {
+					key  []byte
+					kind base.InternalKeyKind
+				}{
+					{key: []byte("a@1"), kind: base.InternalKeyKindSet},
+					{key: key('b', 15), kind: base.InternalKeyKindDelete},
+					{key: key('c', 14), kind: base.InternalKeyKindSingleDelete},
+					{key: key('d', 13), kind: base.InternalKeyKindMerge},
+					{key: []byte("e"), kind: base.InternalKeyKindSetWithDelete},
+				} {
+					if err := rw.Add(base.MakeInternalKey(kv.key, 1, kv.kind), nil, false, base.KVMeta{}); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+			expected: 15,
+		},
+		{
+			name:      "point-max-with-spans",
+			minFormat: TableFormatPebblev2,
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.Set(append(key('b', 10), "@1"...), []byte("val")),
+					w.DeleteRange([]byte("c"), []byte("dd")),
+					w.RangeKeySet([]byte("e"), []byte("ff"), []byte("@5"), []byte("val")),
+				)
+			},
+			expected: 12,
+		},
+		{
+			name: "rangedel-start",
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.DeleteRange(key('c', 16), []byte("d")),
+				)
+			},
+			expected: 16,
+		},
+		{
+			name: "rangedel-end",
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.DeleteRange([]byte("c"), key('d', 17)),
+				)
+			},
+			expected: 17,
+		},
+		{
+			name: "rangedel-only",
+			write: func(w *Writer) error {
+				return firstErr(
+					w.DeleteRange([]byte("a"), []byte("b")),
+					w.DeleteRange([]byte("b"), key('c', 18)),
+				)
+			},
+			expected: 18,
+		},
+		{
+			// RawRowWriter.Add with a RANGEDEL key (addTombstone path); the
+			// value is the end key.
+			name:      "rangedel-raw-add-start",
+			maxFormat: TableFormatPebblev4,
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.Raw().Add(base.MakeInternalKey(key('c', 19), 1, base.InternalKeyKindRangeDelete), []byte("d"), false, base.KVMeta{}),
+				)
+			},
+			expected: 19,
+		},
+		{
+			name:      "rangedel-raw-add-end",
+			maxFormat: TableFormatPebblev4,
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.Raw().Add(base.MakeInternalKey([]byte("c"), 1, base.InternalKeyKindRangeDelete), key('d', 20), false, base.KVMeta{}),
+				)
+			},
+			expected: 20,
+		},
+		{
+			name: "rangedel-raw-encode-span-start",
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.Raw().EncodeSpan(rangeDelSpan(key('c', 21), []byte("d"))),
+				)
+			},
+			expected: 21,
+		},
+		{
+			name: "rangedel-raw-encode-span-end",
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.Raw().EncodeSpan(rangeDelSpan([]byte("c"), key('d', 22))),
+				)
+			},
+			expected: 22,
+		},
+		{
+			name:      "rangekey-set-start",
+			minFormat: TableFormatPebblev2,
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.RangeKeySet(key('e', 25), []byte("f"), []byte("@5"), []byte("val")),
+				)
+			},
+			expected: 25,
+		},
+		{
+			name:      "rangekey-set-end",
+			minFormat: TableFormatPebblev2,
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.RangeKeySet([]byte("e"), key('f', 26), []byte("@5"), []byte("val")),
+				)
+			},
+			expected: 26,
+		},
+		{
+			name:      "rangekey-unset",
+			minFormat: TableFormatPebblev2,
+			write: func(w *Writer) error {
+				return w.RangeKeyUnset([]byte("e"), key('f', 27), []byte("@5"))
+			},
+			expected: 27,
+		},
+		{
+			name:      "rangekey-delete",
+			minFormat: TableFormatPebblev2,
+			write: func(w *Writer) error {
+				return w.RangeKeyDelete(key('e', 28), []byte("f"))
+			},
+			expected: 28,
+		},
+		{
+			name:      "rangekey-raw-encode-span-start",
+			minFormat: TableFormatPebblev2,
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.Raw().EncodeSpan(rangeKeySpan(key('e', 29), []byte("f"))),
+				)
+			},
+			expected: 29,
+		},
+		{
+			name:      "rangekey-raw-encode-span-end",
+			minFormat: TableFormatPebblev2,
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.Raw().EncodeSpan(rangeKeySpan([]byte("e"), key('f', 30))),
+				)
+			},
+			expected: 30,
+		},
+		{
+			name:      "blob-handle",
+			minFormat: TableFormatPebblev6,
+			opts:      func(o *WriterOptions) { o.DisableValueBlocks = true },
+			write: func(w *Writer) error {
+				return firstErr(
+					w.Set([]byte("a@1"), []byte("val")),
+					w.Raw().AddWithBlobHandle(
+						base.MakeInternalKey(key('b', 31), 1, base.InternalKeyKindSet),
+						blob.InlineHandle{
+							InlineHandlePreface: blob.InlineHandlePreface{ReferenceID: 0, ValueLen: 100},
+							HandleSuffix:        blob.HandleSuffix{BlockID: 0, ValueID: 0},
+						},
+						base.ShortAttribute(0), false /* forceObsolete */, base.KVMeta{}),
+				)
+			},
+			expected: 31,
+		},
+		{
+			// All keys are empty: the property is zero and thus absent. Empty
+			// user keys are only supported by the row-based writer.
+			name:      "empty-keys",
+			maxFormat: TableFormatPebblev4,
+			write: func(w *Writer) error {
+				return w.Set(nil, []byte("val"))
+			},
+			expected: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			for tf := TableFormatLevelDB; tf <= TableFormatMax; tf++ {
+				if tf < tc.minFormat || (tc.maxFormat != 0 && tf > tc.maxFormat) {
+					continue
+				}
+				t.Run(tf.String(), func(t *testing.T) {
+					opts := WriterOptions{
+						Comparer:    testkeys.Comparer,
+						KeySchema:   &testkeysSchema,
+						TableFormat: tf,
+					}
+					if tc.opts != nil {
+						tc.opts(&opts)
+					}
+					check(t, opts, tc.write, tc.expected)
+				})
+			}
+		})
+	}
+
+	// Randomized test: write random point keys, range deletions and range keys
+	// and check that the property matches the largest key that was written.
+	t.Run("random", func(t *testing.T) {
+		seed := uint64(time.Now().UnixNano())
+		t.Logf("seed: %d", seed)
+		rng := rand.New(rand.NewPCG(0, seed))
+		randKey := func() []byte {
+			k := make([]byte, 1+rng.IntN(40))
+			for i := range k {
+				k[i] = byte('a' + rng.IntN(3))
+			}
+			return k
+		}
+		randKeys := func(n int) [][]byte {
+			keys := make([][]byte, n)
+			for i := range keys {
+				keys[i] = randKey()
+			}
+			slices.SortFunc(keys, bytes.Compare)
+			return slices.CompactFunc(keys, bytes.Equal)
+		}
+		randSpans := func(n int) [][2][]byte {
+			spans := make([][2][]byte, 0, n)
+			for len(spans) < n {
+				start, end := randKey(), randKey()
+				if c := bytes.Compare(start, end); c == 0 {
+					continue
+				} else if c > 0 {
+					start, end = end, start
+				}
+				spans = append(spans, [2][]byte{start, end})
+			}
+			slices.SortFunc(spans, func(a, b [2][]byte) int { return bytes.Compare(a[0], b[0]) })
+			return spans
+		}
+
+		for tf := TableFormatLevelDB; tf <= TableFormatMax; tf++ {
+			t.Run(tf.String(), func(t *testing.T) {
+				for range 20 {
+					points := randKeys(rng.IntN(100))
+					// Writer.DeleteRange requires non-overlapping range
+					// deletions.
+					rangeDels := slices.DeleteFunc(randSpans(rng.IntN(5)), func() func([2][]byte) bool {
+						var prevEnd []byte
+						return func(s [2][]byte) bool {
+							if prevEnd != nil && bytes.Compare(s[0], prevEnd) < 0 {
+								return true
+							}
+							prevEnd = s[1]
+							return false
+						}
+					}())
+					var rangeKeys [][2][]byte
+					if tf >= TableFormatPebblev2 {
+						rangeKeys = randSpans(rng.IntN(5))
+					}
+					if len(points)+len(rangeDels)+len(rangeKeys) == 0 {
+						points = [][]byte{randKey()}
+					}
+					var expected uint64
+					for _, k := range points {
+						expected = max(expected, uint64(len(k)))
+					}
+					for _, s := range slices.Concat(rangeDels, rangeKeys) {
+						expected = max(expected, uint64(len(s[0])), uint64(len(s[1])))
+					}
+					opts := WriterOptions{
+						Comparer:       testkeys.Comparer,
+						KeySchema:      &testkeysSchema,
+						TableFormat:    tf,
+						BlockSize:      1 + rng.IntN(256),
+						IndexBlockSize: 1 + rng.IntN(256),
+					}
+					check(t, opts, func(w *Writer) error {
+						for _, k := range points {
+							if err := w.Set(k, []byte("val")); err != nil {
+								return err
+							}
+						}
+						// Use distinct suffixes for the range keys, so that
+						// overlapping spans are valid.
+						for _, s := range rangeDels {
+							if err := w.DeleteRange(s[0], s[1]); err != nil {
+								return err
+							}
+						}
+						for i, s := range rangeKeys {
+							suffix := fmt.Appendf(nil, "@%d", i+1)
+							if err := w.RangeKeySet(s[0], s[1], suffix, []byte("val")); err != nil {
+								return err
+							}
+						}
+						return nil
+					}, expected)
+				}
+			})
+		}
+	})
 }

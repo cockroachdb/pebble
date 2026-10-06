@@ -6,9 +6,9 @@ tree
           /
             build/
       36      000003.log
-     661      000005.sst
-     661      000007.sst
-     655      000009.sst
+     681      000005.sst
+     681      000007.sst
+     675      000009.sst
        0      LOCK
      172      MANIFEST-000001
      209      MANIFEST-000008
@@ -16,14 +16,14 @@ tree
        0      marker.format-version.000012.025
        0      marker.manifest.000002.MANIFEST-000008
             simple_ingest/
-     661      000007.sst
-     655      000009.sst
+     681      000007.sst
+     675      000009.sst
      172      MANIFEST-000001
      209      MANIFEST-000008
               checkpoint/
       11        000003.log
-     678        000004.sst
-     661        000005.sst
+     698        000004.sst
+     681        000005.sst
      172        MANIFEST-000001
     2978        OPTIONS-000002
        0        marker.format-version.000001.025

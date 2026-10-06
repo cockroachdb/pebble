@@ -19,7 +19,7 @@ set zoo@1 bah
 flush
 ----
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:859 blobrefs:[(B000006: 10); depth:1]
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:876 blobrefs:[(B000006: 10); depth:1]
 Blob files:
   B000006 physical:{000006 size:[102 (102B)] vals:[10 (10B)]}
 
@@ -31,16 +31,16 @@ set yuumi@1 ba
 flush
 ----
 L0.1:
-  000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[#17-#18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:737
+  000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[#17-#18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:751
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:859 blobrefs:[(B000006: 10); depth:1]
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:876 blobrefs:[(B000006: 10); depth:1]
 Blob files:
   B000006 physical:{000006 size:[102 (102B)] vals:[10 (10B)]}
 
 flush-log
 ----
-[JOB 1] flushed 1 memtable (100B) to L0 [000005(859B+102B)] (859B+102B) blob [000006(102B, MVCCGarbage: 100%)] (102B), in 1.0s (1.0s total), output rate 859B/s
-[JOB 1] flushed 1 memtable (100B) to L0 [000008(737B)] (737B), in 1.0s (1.0s total), output rate 737B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000005(876B+102B)] (876B+102B) blob [000006(102B, MVCCGarbage: 100%)] (102B), in 1.0s (1.0s total), output rate 876B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000008(751B)] (751B), in 1.0s (1.0s total), output rate 751B/s
 
 batch
 set yay@3 a
@@ -51,18 +51,18 @@ set yuumi@1 poiandyaya
 flush
 ----
 L0.2:
-  000010:[yay@3#19,SET-yuumi@1#21,SET] seqnums:[#19-#21] points:[yay@3#19,SET-yuumi@1#21,SET] size:827 blobrefs:[(B000011: 12); depth:1]
+  000010:[yay@3#19,SET-yuumi@1#21,SET] seqnums:[#19-#21] points:[yay@3#19,SET-yuumi@1#21,SET] size:844 blobrefs:[(B000011: 12); depth:1]
 L0.1:
-  000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[#17-#18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:737
+  000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[#17-#18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:751
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:859 blobrefs:[(B000006: 10); depth:1]
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:876 blobrefs:[(B000006: 10); depth:1]
 Blob files:
   B000006 physical:{000006 size:[102 (102B)] vals:[10 (10B)]}
   B000011 physical:{000011 size:[102 (102B)] vals:[12 (12B)]}
 
 flush-log
 ----
-[JOB 1] flushed 1 memtable (100B) to L0 [000010(827B+102B)] (827B+102B) blob [000011(102B, MVCCGarbage: 17%)] (102B), in 1.0s (1.0s total), output rate 827B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000010(844B+102B)] (844B+102B) blob [000011(102B, MVCCGarbage: 17%)] (102B), in 1.0s (1.0s total), output rate 844B/s
 
 
 # Another test with the same value separation config, but this time we set a span
@@ -97,8 +97,8 @@ set zoo@1 bah
 flush
 ----
 L0.0:
-  000005:[apple@3#10,SET-apple@2#11,SET] seqnums:[#10-#11] points:[apple@3#10,SET-apple@2#11,SET] size:799 blobrefs:[(B000006: 2); depth:1]
-  000007:[yay@3#12,SET-zoo@1#19,SET] seqnums:[#12-#19] points:[yay@3#12,SET-zoo@1#19,SET] size:890 blobrefs:[(B000008: 5); depth:1]
+  000005:[apple@3#10,SET-apple@2#11,SET] seqnums:[#10-#11] points:[apple@3#10,SET-apple@2#11,SET] size:816 blobrefs:[(B000006: 2); depth:1]
+  000007:[yay@3#12,SET-zoo@1#19,SET] seqnums:[#12-#19] points:[yay@3#12,SET-zoo@1#19,SET] size:916 blobrefs:[(B000008: 5); depth:1]
 Blob files:
   B000006 physical:{000006 size:[91 (91B)] vals:[2 (2B)]}
   B000008 physical:{000008 size:[94 (94B)] vals:[5 (5B)]}
@@ -126,6 +126,7 @@ rocksdb.compression: Snappy
 pebble.compression_stats: None:234
 pebble.value-separation.min-size: 5
 pebble.value-separation.by-suffix.disabled: true
+pebble.max.user-key.size: 8
 obsolete-key: hex:00
 
 define value-separation=(enabled, min-size=5, max-ref-depth=3, garbage-ratios=1.0:1.0)
@@ -152,7 +153,7 @@ set b@0 bat0
 flush
 ----
 L0.0:
-  000005:[a@2#10,SET-b@0#17,SET] seqnums:[#10-#17] points:[a@2#10,SET-b@0#17,SET] size:880
+  000005:[a@2#10,SET-b@0#17,SET] seqnums:[#10-#17] points:[a@2#10,SET-b@0#17,SET] size:896
 
 sstable-properties file=000005
 ----
@@ -177,6 +178,7 @@ pebble.num.values.in.value-blocks: 3
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.compression: Snappy
 pebble.compression_stats: None:221
+pebble.max.user-key.size: 3
 obsolete-key: hex:00
 
 batch
@@ -198,9 +200,9 @@ a,c val-sep-minimum-size=0 disable-separation-by-suffix
 flush
 ----
 L0.1:
-  000007:[a@2#18,SET-b@0#25,SET] seqnums:[#18-#25] points:[a@2#18,SET-b@0#25,SET] size:770
+  000007:[a@2#18,SET-b@0#25,SET] seqnums:[#18-#25] points:[a@2#18,SET-b@0#25,SET] size:787
 L0.0:
-  000005:[a@2#10,SET-b@0#17,SET] seqnums:[#10-#17] points:[a@2#10,SET-b@0#17,SET] size:880
+  000005:[a@2#10,SET-b@0#17,SET] seqnums:[#10-#17] points:[a@2#10,SET-b@0#17,SET] size:896
 
 sstable-properties file=000007
 ----
@@ -222,6 +224,7 @@ rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.compression: Snappy
 pebble.compression_stats: None:188
+pebble.max.user-key.size: 3
 obsolete-key: hex:00
 
 define value-separation=(enabled, min-size=5, max-ref-depth=3, garbage-ratios=1.0:1.0, min-mvcc-garbage-size=5)
@@ -241,4 +244,4 @@ set zoo@1 bah
 flush
 ----
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:870
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:886
