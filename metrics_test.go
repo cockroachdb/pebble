@@ -510,6 +510,9 @@ func TestMetrics(t *testing.T) {
 			}
 			return buf.String()
 
+		case "table-props":
+			return runTablePropsCmd(td, d)
+
 		case "disk-usage":
 			return humanize.Bytes.Uint64(d.Metrics().DiskSpaceUsage()).String()
 

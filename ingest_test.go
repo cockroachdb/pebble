@@ -1341,6 +1341,9 @@ func TestIngestExternal(t *testing.T) {
 		case "wait-pending-table-stats":
 			return runWaitForTableStatsCmd(td, d)
 
+		case "table-props":
+			return runTablePropsCmd(td, d)
+
 		case "compact":
 			if len(td.CmdArgs) != 2 {
 				panic("insufficient args for compact command")

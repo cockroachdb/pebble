@@ -36,6 +36,8 @@ import (
 //
 // The resulting sstable will have no block properties.
 //
+// Returns the size and the properties of the output sstable.
+//
 // The function might return ErrEmptySpan if there are no blocks that could
 // include keys in the given range. See ErrEmptySpan for more details.
 //
@@ -51,12 +53,12 @@ func CopySpan(
 	output objstorage.Writable,
 	o WriterOptions,
 	start, end InternalKey,
-) (size uint64, _ error) {
+) (size uint64, outputProps *Properties, _ error) {
 	defer func() { _ = input.Close() }()
 
 	const unsupportedCopyFeatures = AttributeValueBlocks | AttributeRangeKeySets | AttributeRangeKeyUnsets | AttributeRangeKeyDels | AttributeRangeDels
 	if r.Attributes.Intersects(unsupportedCopyFeatures) {
-		return copyWholeFileBecauseOfUnsupportedFeature(ctx, input, output) // Finishes/Aborts output.
+		return copyWholeFileBecauseOfUnsupportedFeature(ctx, input, r, output) // Finishes/Aborts output.
 	}
 
 	// Don't initialize the writer with a filter policy. We'll copy whatever
@@ -94,11 +96,11 @@ func CopySpan(
 
 	metaIndex, _, err := r.readAndDecodeMetaindex(ctx, block.ReadEnv{BufferPool: bufferPool}, rh)
 	if err != nil {
-		return 0, errors.Wrap(err, "reading metaindex")
+		return 0, nil, errors.Wrap(err, "reading metaindex")
 	}
 	props, err := r.readPropertiesBlockInternal(ctx, block.ReadEnv{BufferPool: bufferPool}, rh)
 	if err != nil {
-		return 0, errors.Wrap(err, "reading properties")
+		return 0, nil, errors.Wrap(err, "reading properties")
 	}
 
 	// Copy the filter block if it exists. We iterate over the metaindex to find
@@ -130,13 +132,13 @@ func CopySpan(
 			return nil
 		}()
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 	}
 
 	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, rh)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	defer indexH.Release()
 
@@ -149,14 +151,14 @@ func CopySpan(
 	// Find the blocks that intersect our span.
 	blocks, err := intersectingIndexEntries(ctx, r, rh, indexH, start, end, props.NumDataBlocks)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
 	// In theory an empty SST is fine, but #3409 means they are not. We could make
 	// a non-empty sst by copying something outside the span, but #3907 means that
 	// the empty virtual span would still be a problem, so don't bother.
 	if len(blocks) < 1 {
-		return 0, ErrEmptySpan
+		return 0, nil, ErrEmptySpan
 	}
 
 	// Copy all blocks byte-for-byte without doing any per-key processing.
@@ -177,7 +179,7 @@ func CopySpan(
 			// Copy them using objstorage.Copy.
 			if err := w.copyDataBlocks(ctx, blocksNotInCache, rh); err != nil {
 				cv.Release()
-				return 0, err
+				return 0, nil, err
 			}
 			blocksNotInCache = nil
 		}
@@ -185,7 +187,7 @@ func CopySpan(
 		err := w.addDataBlock(block.CacheBufferHandle(cv).BlockData(), blocks[i].sep, blocks[i].bh)
 		cv.Release()
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 	}
 
@@ -193,7 +195,7 @@ func CopySpan(
 		// We have some remaining blocks that were not in cache. Copy them
 		// using objstorage.Copy.
 		if err := w.copyDataBlocks(ctx, blocksNotInCache, rh); err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 		blocksNotInCache = nil
 	}
@@ -203,15 +205,14 @@ func CopySpan(
 
 	if err := w.Close(); err != nil {
 		w = nil
-		return 0, err
+		return 0, nil, err
 	}
 	meta, err := w.Metadata()
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	wrote := meta.Size
 	w = nil
-	return wrote, nil
+	return meta.Size, &meta.Properties, nil
 }
 
 // ErrEmptySpan is returned by CopySpan if the input sstable has no keys in the
@@ -307,14 +308,22 @@ func intersectingIndexEntries(
 //
 // Finishes or Aborts output; does *not* Close input.
 func copyWholeFileBecauseOfUnsupportedFeature(
-	ctx context.Context, input objstorage.Readable, output objstorage.Writable,
-) (size uint64, _ error) {
+	ctx context.Context, input objstorage.Readable, r *Reader, output objstorage.Writable,
+) (size uint64, _ *Properties, _ error) {
+	props, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+	if err != nil {
+		output.Abort()
+		return 0, nil, errors.Wrap(err, "reading properties")
+	}
 	length := uint64(input.Size())
 	rh := input.NewReadHandle(objstorage.NoReadBefore)
 	rh.SetupForCompaction()
 	if err := objstorage.Copy(ctx, rh, output, 0, length); err != nil {
 		output.Abort()
-		return 0, err
+		return 0, nil, err
 	}
-	return length, output.Finish()
+	if err := output.Finish(); err != nil {
+		return 0, nil, err
+	}
+	return length, &props, nil
 }
