@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/stretchr/testify/require"
 )
 
@@ -203,4 +204,21 @@ func TestTableMetadataSize(t *testing.T) {
 		t.Errorf("TableBacking struct size (%d bytes) is not expected size (%d bytes)",
 			structSize, tableBackingSize)
 	}
+}
+
+func TestTableBackingCopyPropertiesFrom(t *testing.T) {
+	var b TableBacking
+	props := b.PopulateProperties(&sstable.Properties{
+		NumEntries:       10,
+		NumDeletions:     3,
+		RawKeySize:       100,
+		CompressionStats: "None:10,Snappy:20/30",
+	})
+	var b2 TableBacking
+	_, ok := b2.Properties()
+	require.False(t, ok)
+	b2.CopyPropertiesFrom(props)
+	props2, ok := b2.Properties()
+	require.True(t, ok)
+	require.Equal(t, *props, *props2)
 }

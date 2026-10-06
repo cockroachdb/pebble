@@ -37,8 +37,8 @@ func TestCopySpan(t *testing.T) {
 	nextFileNum := base.FileNum(1)
 	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
 
-	getReader := func(d *datadriven.TestData) (*Reader, error) {
-		f, err := fs.Open(d.CmdArgs[0].Key)
+	getReader := func(name string) (*Reader, error) {
+		f, err := fs.Open(name)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +52,7 @@ func TestCopySpan(t *testing.T) {
 			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
 					CacheHandle: cacheHandle,
-					FileNum:     base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
+					FileNum:     base.DiskFileNum(fileNameToNum[name]),
 				},
 			},
 			Comparer:   testkeys.Comparer,
@@ -108,7 +108,7 @@ func TestCopySpan(t *testing.T) {
 				}
 			}
 
-			r, err := getReader(d)
+			r, err := getReader(d.CmdArgs[0].Key)
 			if err != nil {
 				return err.Error()
 			}
@@ -150,7 +150,7 @@ func TestCopySpan(t *testing.T) {
 			fileNameToNum[outputFile] = nextFileNum
 			nextFileNum++
 
-			r, err := getReader(d)
+			r, err := getReader(d.CmdArgs[0].Key)
 			if err != nil {
 				return err.Error()
 			}
@@ -165,14 +165,23 @@ func TestCopySpan(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			size, err := CopySpan(context.TODO(), readable2, r, 0 /* level */, writable, wOpts, start, end)
+			size, props, err := CopySpan(context.TODO(), readable2, r, 0 /* level */, writable, wOpts, start, end)
 			if err != nil {
 				return err.Error()
 			}
+			// The returned properties must match those of the output sstable.
+			outR, err := getReader(outputFile)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, outR.Close()) }()
+			outProps, err := outR.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+			require.NoError(t, err)
+			// Loaded only affects String().
+			outProps.Loaded, props.Loaded = 0, 0
+			require.Equal(t, outProps.String(), props.String())
 			return fmt.Sprintf("copied %d bytes", size)
 
 		case "describe":
-			r, err := getReader(d)
+			r, err := getReader(d.CmdArgs[0].Key)
 			if err != nil {
 				return err.Error()
 			}
@@ -184,7 +193,7 @@ func TestCopySpan(t *testing.T) {
 			return l.Describe(false /* verbose */, r, nil)
 
 		case "props":
-			r, err := getReader(d)
+			r, err := getReader(d.CmdArgs[0].Key)
 			if err != nil {
 				return err.Error()
 			}
@@ -269,7 +278,7 @@ func TestCopySpanCompressionStats(t *testing.T) {
 					require.NoError(t, iter.Close())
 				}
 				out := &objstorage.MemObj{}
-				_, err = CopySpan(ctx, src, r, 0 /* level */, out, wOpts,
+				_, _, err = CopySpan(ctx, src, r, 0 /* level */, out, wOpts,
 					base.MakeInternalKey(key(200), base.SeqNumMax, base.InternalKeyKindSet),
 					base.MakeInternalKey(key(800), 0, base.InternalKeyKindSet))
 				require.NoError(t, err)

@@ -1656,6 +1656,39 @@ func runIngestExternalCmd(
 	return nil
 }
 
+// runTablePropsCmd prints the (in-memory) backing properties of each table in
+// the current version. With wait-for-stats, it first waits for the table stats
+// (and properties) to be loaded.
+func runTablePropsCmd(td *datadriven.TestData, d *DB) string {
+	if td.HasArg("wait-for-stats") {
+		d.waitTableStats()
+	}
+	var buf strings.Builder
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	v := d.mu.versions.currentVersion()
+	for l := range v.Levels {
+		if v.Levels[l].Empty() {
+			continue
+		}
+		fmt.Fprintf(&buf, "L%d:\n", l)
+		for f := range v.Levels[l].All() {
+			fmt.Fprintf(&buf, "  %s", f.TableNum)
+			if f.Virtual {
+				fmt.Fprintf(&buf, "(%s)", f.TableBacking.DiskFileNum)
+			}
+			props, ok := f.TableBacking.Properties()
+			if !ok {
+				buf.WriteString(": properties not loaded\n")
+				continue
+			}
+			fmt.Fprintf(&buf, ": entries=%d deletions=%d compression=%s\n",
+				props.NumEntries, props.NumDeletions, props.CompressionStats.String())
+		}
+	}
+	return buf.String()
+}
+
 func runLSMCmd(td *datadriven.TestData, d *DB) string {
 	return describeLSM(d, td.HasArg("verbose"))
 }

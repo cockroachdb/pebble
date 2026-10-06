@@ -2609,3 +2609,33 @@ init reopen
 disk-usage
 ----
 7,119B
+
+# A copy compaction (local to shared) copies the stats of the input table, so it
+# must also populate the properties of the new table.
+
+init shared-lower
+----
+
+batch
+set a 1
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-a#10,SET]
+
+table-props wait-for-stats
+----
+L0:
+  000005: entries=1 deletions=0 compression=None:36,Snappy:76/87
+
+compact a-z
+----
+L6:
+  000006:[a#10,SET-a#10,SET]
+
+table-props
+----
+L6:
+  000006: entries=1 deletions=0 compression=None:36,Snappy:76/87
