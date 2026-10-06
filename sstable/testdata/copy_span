@@ -109,7 +109,7 @@ d#5,SET: foobar
 
 copy-span test3 test5 a#10,SET bb#0,SET
 ----
-copied 796 bytes
+copied 798 bytes
 
 iter test5
 ----
@@ -149,7 +149,7 @@ d#5,SET: foobar
 
 copy-span test32 test34 a#10,SET bb#0,SET
 ----
-copied 796 bytes
+copied 798 bytes
 
 iter test34
 ----
@@ -183,7 +183,7 @@ d#5,SET: foobar
 
 copy-span test3 test5 a#10,SET bb#0,SET
 ----
-copied 813 bytes
+copied 815 bytes
 
 iter test5
 ----
@@ -223,7 +223,7 @@ d#5,SET: foobar
 
 copy-span test32 test34 a#10,SET bb#0,SET
 ----
-copied 813 bytes
+copied 815 bytes
 
 iter test34
 ----
@@ -303,7 +303,7 @@ obsolete-key: hex:00
 
 copy-span bloom-sst bloom-sst-copy b#10,SET cc#0,SET filter=my-custom-filter/bloom(10)
 ----
-copied 955 bytes
+copied 970 bytes
 
 describe bloom-sst-copy
 ----
@@ -313,6 +313,6 @@ sstable
  ├── data  offset: 150  length: 73
  ├── index  offset: 228  length: 45
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 278  length: 69
- ├── properties  offset: 352  length: 448
- ├── meta-index  offset: 805  length: 88
- └── footer  offset: 898  length: 57
+ ├── properties  offset: 352  length: 463
+ ├── meta-index  offset: 820  length: 88
+ └── footer  offset: 913  length: 57

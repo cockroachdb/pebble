@@ -109,6 +109,29 @@ func (c *CompressionStats) All() iter.Seq2[compression.Setting, CompressionStats
 	}
 }
 
+// uniqueSetting returns the setting with the given algorithm, if the stats
+// contain exactly one such setting. The receiver can be nil.
+//
+// Always returns ok=false for NoAlgorithm, whose only setting is the zero
+// value.
+func (c *CompressionStats) uniqueSetting(
+	algo compression.Algorithm,
+) (_ compression.Setting, ok bool) {
+	if c == nil {
+		return compression.Setting{}, false
+	}
+	var res compression.Setting
+	for s := range c.All() {
+		if s.Algorithm == algo {
+			if res != (compression.Setting{}) {
+				return compression.Setting{}, false
+			}
+			res = s
+		}
+	}
+	return res, res != (compression.Setting{})
+}
+
 // String returns a string representation of the stats, in the format:
 // "<setting1>:<compressed1>/<uncompressed1>,<setting2>:<compressed2>/<uncompressed2>,..."
 //
