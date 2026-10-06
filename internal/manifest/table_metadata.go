@@ -479,11 +479,24 @@ func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBacki
 	if invariants.Enabled && err != nil {
 		panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", errors.Safe(b.props.CompressionStats), b.DiskFileNum, err))
 	}
+	b.markPropertiesValid()
+	return &b.props
+}
+
+// CopyPropertiesFrom populates the properties with a copy of the given
+// properties of another backing. It is used when the backing's table is an
+// identical copy of another table. Can be called at most once for a
+// TableBacking (and not in conjunction with PopulateProperties).
+func (b *TableBacking) CopyPropertiesFrom(props *TableBackingProperties) {
+	b.props = *props
+	b.markPropertiesValid()
+}
+
+func (b *TableBacking) markPropertiesValid() {
 	oldStatsValid := b.propsValid.Swap(true)
 	if invariants.Enabled && oldStatsValid {
 		panic("stats set twice")
 	}
-	return &b.props
 }
 
 // InitPhysicalBacking allocates and sets the TableBacking which is required by a
