@@ -104,6 +104,7 @@ rocksdb.filter.size: 0
 rocksdb.index.size: 28
 rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+pebble.max.user-key.size: 1
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
@@ -235,9 +236,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 548
- ├── meta-index  offset: 968  length: 46
- └── footer  offset: 1019  length: 57
+ ├── properties  offset: 415  length: 569
+ ├── meta-index  offset: 989  length: 46
+ └── footer  offset: 1040  length: 57
 
 props
 ----
@@ -256,6 +257,7 @@ rocksdb.index.partitions: 3
 rocksdb.index.size: 158
 rocksdb.block.based.table.index.type: 2
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+pebble.max.user-key.size: 1
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
@@ -274,9 +276,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 548
- ├── meta-index  offset: 968  length: 46
- └── footer  offset: 1019  length: 57
+ ├── properties  offset: 415  length: 569
+ ├── meta-index  offset: 989  length: 46
+ └── footer  offset: 1040  length: 57
 
 scan
 ----
@@ -321,9 +323,9 @@ layout
 sstable
  ├── index  offset: 0  length: 28
  ├── range-key  offset: 33  length: 84
- ├── properties  offset: 122  length: 589
- ├── meta-index  offset: 716  length: 65
- └── footer  offset: 786  length: 57
+ ├── properties  offset: 122  length: 610
+ ├── meta-index  offset: 737  length: 65
+ └── footer  offset: 807  length: 57
 
 props
 ----
@@ -343,6 +345,7 @@ rocksdb.filter.size: 0
 rocksdb.index.size: 28
 rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+pebble.max.user-key.size: 1
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 pebble.num.range-key-unsets: 0

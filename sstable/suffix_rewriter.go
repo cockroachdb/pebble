@@ -209,6 +209,29 @@ func rewriteDataBlocksInParallel(
 	return output, nil
 }
 
+// rewrittenMaxUserKeySize returns the MaxUserKeySize property for the table
+// produced by rewriting the suffixes (from -> to) of a table with the given
+// properties. rangeKeysMax is the size of the largest range key bound in the
+// rewritten table.
+//
+// Returns 0 (unknown) if the source table has point keys but does not have the
+// property.
+func rewrittenMaxUserKeySize(src *Properties, rangeKeysMax uint64, from, to []byte) uint64 {
+	if src.NumEntries <= src.NumRangeDeletions {
+		// No point keys (NumEntries does not include range keys).
+		return rangeKeysMax
+	}
+	if src.MaxUserKeySize == 0 {
+		return 0
+	}
+	// Every point key has the suffix `from`, so the maximum point key size
+	// changes by exactly len(to)-len(from). The original maximum might come
+	// from a range key or range deletion bound, in which case the result is
+	// still an upper bound.
+	pointKeysMax := max(src.MaxUserKeySize+uint64(len(to)), uint64(len(from))) - uint64(len(from))
+	return max(rangeKeysMax, pointKeysMax)
+}
+
 func rewriteRangeKeyBlockToWriter(r *Reader, w RawWriter, from, to []byte) error {
 	iter, err := r.NewRawRangeKeyIter(context.TODO(), NoFragmentTransforms, block.NoReadEnv)
 	if err != nil {

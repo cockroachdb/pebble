@@ -9,6 +9,7 @@ import (
 	stdcmp "cmp"
 	"fmt"
 	"iter"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -514,6 +515,41 @@ type FileBacking struct {
 	// In addition, a reference count is taken for every backing in the latest
 	// version's VirtualBackings (necessary to support Protect/Unprotect).
 	refs atomic.Int32
+
+	// maxUserKeySize is the size of the largest user key in the backing table
+	// (see sstable.Properties.MaxUserKeySize), or 0 if unknown: either the
+	// table's properties have not been loaded yet, or the table does not have
+	// the property. It applies to all the (virtual) tables that use this
+	// backing (it is not scaled). Once known, it does not change. Saturates at
+	// math.MaxUint32.
+	//
+	// It is populated (see PopulateMaxUserKeySize) when a table is created, when
+	// the stats of a table are loaded, and when a table is copied.
+	maxUserKeySize atomic.Uint32
+}
+
+// MaxUserKeySize returns the size of the largest user key in the backing
+// table, or 0 if it is not known (see FileBacking.maxUserKeySize).
+func (b *FileBacking) MaxUserKeySize() uint64 {
+	return uint64(b.maxUserKeySize.Load())
+}
+
+// PopulateMaxUserKeySize sets the size of the largest user key in the backing
+// table, from the table's properties (sstable.Properties.MaxUserKeySize; 0 if
+// the property is absent). It can be called multiple times (e.g. once for each
+// virtual table that uses the backing), but the value cannot change once it is
+// known.
+func (b *FileBacking) PopulateMaxUserKeySize(v uint64) {
+	v32 := uint32(min(v, math.MaxUint32))
+	if invariants.Enabled {
+		if old := b.maxUserKeySize.Load(); old != 0 && old != v32 {
+			panic(errors.AssertionFailedf("pebble: max user key size of backing %s changed from %d to %d",
+				b.DiskFileNum, old, v32))
+		}
+	}
+	if v32 != 0 {
+		b.maxUserKeySize.Store(v32)
+	}
 }
 
 // MustHaveRefs asserts that the backing has a positive refcount.

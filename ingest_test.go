@@ -215,7 +215,7 @@ func TestIngestLoadRand(t *testing.T) {
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: version.MaxTableFormat(),
 			})
-			var count uint64
+			var count, maxUserKeySize uint64
 			for i := range keys {
 				if i > 0 && base.InternalCompare(cmp, keys[i-1], keys[i]) == 0 {
 					// Duplicate key, ignore.
@@ -223,6 +223,7 @@ func TestIngestLoadRand(t *testing.T) {
 				}
 				require.NoError(t, w.Add(keys[i], nil, false /* forceObsolete */))
 				count++
+				maxUserKeySize = max(maxUserKeySize, uint64(len(keys[i].UserKey)))
 			}
 			expected[i].Stats.NumEntries = count
 			require.NoError(t, w.Close())
@@ -232,6 +233,7 @@ func TestIngestLoadRand(t *testing.T) {
 
 			expected[i].Size = meta.Size
 			expected[i].InitPhysicalBacking()
+			expected[i].FileBacking.PopulateMaxUserKeySize(maxUserKeySize)
 		}()
 	}
 

@@ -6,8 +6,10 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/rand/v2"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -68,6 +71,8 @@ func exampleMetrics() Metrics {
 	m.Keys.RangeKeySetsCount = 123
 	m.Keys.TombstoneCount = 456
 	m.Keys.MissizedTombstonesCount = 789
+	m.Keys.MaxUserKeySize = 1234
+	m.Keys.MaxUserKeySizeUnknownTables = 5
 	m.Snapshots.Count = 4
 	m.Snapshots.EarliestSeqNum = 1024
 	m.Table.ZombieSize = 15
@@ -387,6 +392,14 @@ func TestMetrics(t *testing.T) {
 			// are accurate. Reads on these iterators will change the cache hit
 			// rates.
 			lines := strings.Split(td.Input, "\n")
+			for _, line := range lines {
+				if strings.HasPrefix(line, "max-user-key-size") {
+					// These metrics are derived from the tables' properties, which
+					// are loaded asynchronously when the DB is reopened.
+					waitTableStatsForTest(d)
+					break
+				}
+			}
 			m := d.Metrics()
 			// TODO(bananabrick): Use reflection to pull the values associated
 			// with the metrics fields.
@@ -414,6 +427,10 @@ func TestMetrics(t *testing.T) {
 						panic(fmt.Sprintf("invalid level %d", l))
 					}
 					buf.WriteString(fmt.Sprintf("%d\n", m.Levels[l].NumVirtualFiles))
+				} else if line == "max-user-key-size" {
+					buf.WriteString(fmt.Sprintf("%d\n", m.Keys.MaxUserKeySize))
+				} else if line == "max-user-key-size-unknown-tables" {
+					buf.WriteString(fmt.Sprintf("%d\n", m.Keys.MaxUserKeySizeUnknownTables))
 				} else {
 					panic(fmt.Sprintf("invalid field: %s", line))
 				}
@@ -545,4 +562,257 @@ func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+}
+
+// waitTableStatsForTest waits until the stats of all tables are loaded, unless
+// table stats are disabled.
+func waitTableStatsForTest(d *DB) {
+	if d.opts.DisableTableStats {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.waitTableStatsInitialLoad()
+	d.waitTableStats()
+}
+
+// TestMetricsMaxUserKeySize exercises Metrics.Keys.MaxUserKeySize and
+// Metrics.Keys.MaxUserKeySizeUnknownTables, which are aggregated across the
+// LSM from the tables' backings (which are populated from the table
+// properties).
+//
+// Commands:
+//
+//   - init [disable-table-stats] [shared-lower] [format-major-version=<n>]:
+//     creates a new DB on a fresh MemFS, using the testkeys comparer. With
+//     shared-lower, the lower levels are created on shared storage.
+//   - open-fixture <dir> [format-major-version=<n>]: opens a copy of the DB in
+//     testdata/<dir>, which was created by an older version of Pebble, using the
+//     default comparer. Prints the format major version.
+//   - reopen [disable-table-stats]: closes and reopens the DB, on the same FS
+//     and with the same options. With disable-table-stats, the tables' stats
+//     are never loaded (except for tables whose stats are set at creation).
+//   - enable-table-stats: enables table stats collection (after a reopen
+//     with disable-table-stats) and starts collecting the stats.
+//   - batch, flush, compact, build, ingest, ingest-and-excise, excise,
+//     build-remote, ingest-external, lsm: like elsewhere.
+//   - download <start> <end> [via-backing-file-download]: downloads the
+//     external tables overlapping the span.
+//   - max-key-size: waits for table stats (unless disabled), then prints the
+//     per-table MaxUserKeySize (from the table backing) followed by the
+//     LSM-wide metrics.
+func TestMetricsMaxUserKeySize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	var d *DB
+	var opts *Options
+	var remoteStorage remote.Storage
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+	closeDB := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+			d = nil
+		}
+	}
+	parseFormatMajorVersion := func(td *datadriven.TestData, def FormatMajorVersion) FormatMajorVersion {
+		if !td.HasArg("format-major-version") {
+			return def
+		}
+		var v uint64
+		td.ScanArgs(t, "format-major-version", &v)
+		return FormatMajorVersion(v)
+	}
+
+	datadriven.RunTest(t, "testdata/metrics_max_user_key_size", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "init":
+			closeDB()
+			remoteStorage = remote.NewInMem()
+			opts = &Options{
+				Comparer:                    testkeys.Comparer,
+				FS:                          vfs.NewMem(),
+				FormatMajorVersion:          parseFormatMajorVersion(td, FormatNewest),
+				DisableAutomaticCompactions: true,
+				DisableTableStats:           td.HasArg("disable-table-stats"),
+				DebugCheck:                  DebugCheckLevels,
+				Logger:                      testLogger{t: t},
+			}
+			opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+				"external-locator": remoteStorage,
+				// Shared storage.
+				"": remote.NewInMem(),
+			})
+			opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
+			if td.HasArg("shared-lower") {
+				opts.Experimental.CreateOnShared = remote.CreateOnSharedLower
+			}
+			var err error
+			d, err = Open("", opts)
+			require.NoError(t, err)
+			if td.HasArg("shared-lower") {
+				require.NoError(t, d.SetCreatorID(1))
+			}
+			return ""
+
+		case "open-fixture":
+			closeDB()
+			if len(td.CmdArgs) < 1 {
+				td.Fatalf(t, "open-fixture <dir>")
+			}
+			dir := td.CmdArgs[0].String()
+			fs := vfs.NewMem()
+			_, err := vfs.Clone(vfs.Default, fs, filepath.Join("testdata", dir), dir)
+			require.NoError(t, err)
+			opts = &Options{
+				// The fixtures use the default comparer.
+				FS:                          fs,
+				FormatMajorVersion:          parseFormatMajorVersion(td, FormatDefault),
+				DisableAutomaticCompactions: true,
+				DebugCheck:                  DebugCheckLevels,
+				Logger:                      testLogger{t: t},
+			}
+			d, err = Open(dir, opts)
+			require.NoError(t, err)
+			return fmt.Sprintf("format major version: %d", d.FormatMajorVersion())
+
+		case "reopen":
+			dirname := d.dirname
+			closeDB()
+			opts.DisableTableStats = td.HasArg("disable-table-stats")
+			var err error
+			d, err = Open(dirname, opts)
+			require.NoError(t, err)
+			return ""
+
+		case "enable-table-stats":
+			d.mu.Lock()
+			d.opts.DisableTableStats = false
+			d.maybeCollectTableStatsLocked()
+			d.mu.Unlock()
+			return ""
+
+		case "batch":
+			b := d.NewBatch()
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
+			}
+			if err := b.Commit(nil); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "flush":
+			if err := d.Flush(); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
+		case "compact":
+			if err := runCompactCmd(td, d); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
+		case "build":
+			if err := runBuildCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest":
+			if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
+		case "ingest-and-excise":
+			if err := runIngestAndExciseCmd(td, d); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
+		case "excise":
+			if err := runExciseCmd(td, d); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
+		case "build-remote":
+			if err := runBuildRemoteCmd(td, d, remoteStorage); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest-external":
+			if err := runIngestExternalCmd(t, td, d, remoteStorage, "external-locator"); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
+		case "download":
+			if len(td.CmdArgs) < 2 {
+				td.Fatalf(t, "download <start> <end> [via-backing-file-download]")
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			if err := d.Download(ctx, []DownloadSpan{{
+				StartKey:               []byte(td.CmdArgs[0].String()),
+				EndKey:                 []byte(td.CmdArgs[1].String()),
+				ViaBackingFileDownload: td.HasArg("via-backing-file-download"),
+			}}); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
+		case "lsm":
+			return runLSMCmd(td, d)
+
+		case "max-key-size":
+			waitTableStatsForTest(d)
+			var buf strings.Builder
+			d.mu.Lock()
+			v := d.mu.versions.currentVersion()
+			for l := range v.Levels {
+				if v.Levels[l].Empty() {
+					continue
+				}
+				fmt.Fprintf(&buf, "L%d:\n", l)
+				for f := range v.Levels[l].All() {
+					fmt.Fprintf(&buf, "  %s", f.FileNum)
+					if f.Virtual {
+						fmt.Fprintf(&buf, "(%s)", f.FileBacking.DiskFileNum)
+					}
+					if size := f.FileBacking.MaxUserKeySize(); size != 0 {
+						fmt.Fprintf(&buf, ": %d", size)
+						if !f.StatsValid() {
+							buf.WriteString(" (stats not loaded)")
+						}
+					} else if !f.StatsValid() {
+						buf.WriteString(": stats not loaded")
+					} else {
+						buf.WriteString(": property absent")
+					}
+					if p := f.SyntheticPrefixAndSuffix.Prefix(); p != nil {
+						fmt.Fprintf(&buf, " synthetic-prefix=%q", p)
+					}
+					if s := f.SyntheticPrefixAndSuffix.Suffix(); s != nil {
+						fmt.Fprintf(&buf, " synthetic-suffix=%q", s)
+					}
+					buf.WriteString("\n")
+				}
+			}
+			d.mu.Unlock()
+			m := d.Metrics()
+			fmt.Fprintf(&buf, "max user key size: %d\n", m.Keys.MaxUserKeySize)
+			fmt.Fprintf(&buf, "unknown tables: %d\n", m.Keys.MaxUserKeySizeUnknownTables)
+			return buf.String()
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
 }
