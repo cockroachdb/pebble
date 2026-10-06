@@ -2965,11 +2965,12 @@ func (d *DB) runCopyCompaction(
 
 		// NB: external files are always virtual.
 		var wrote uint64
+		var props *sstable.Properties
 		err = d.fileCache.withReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r *sstable.Reader, env sstable.ReadEnv) error {
 			var err error
 			// TODO(radu): plumb a ReadEnv to CopySpan (it could use the buffer pool
 			// or update category stats).
-			wrote, err = sstable.CopySpan(ctx,
+			wrote, props, err = sstable.CopySpan(ctx,
 				src, r, c.startLevel.level,
 				w, d.opts.MakeWriterOptions(c.outputLevel.level, d.TableFormat()),
 				start, end,
@@ -2991,6 +2992,9 @@ func (d *DB) runCopyCompaction(
 		}
 		newMeta.TableBacking.Size = wrote
 		newMeta.Size = wrote
+		// The table stats collector does not load the properties of tables that
+		// already have stats (which were copied from the input table above).
+		newMeta.TableBacking.PopulateProperties(props)
 	} else {
 		_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
 			d.objProvider.Path(objMeta), base.FileTypeTable, newMeta.TableBacking.DiskFileNum,
@@ -2999,6 +3003,12 @@ func (d *DB) runCopyCompaction(
 			return nil, compact.Stats{}, []compact.OutputBlob{}, err
 		}
 		deleteOnExit = true
+		// The table stats collector does not load the properties of tables that
+		// already have stats (which were copied from the input table above). The
+		// new table is identical to the input table.
+		if inputProps, ok := inputMeta.TableBacking.Properties(); ok {
+			newMeta.TableBacking.CopyPropertiesFrom(inputProps)
+		}
 	}
 	ve.NewTables = []manifest.NewTableEntry{{
 		Level: c.outputLevel.level,

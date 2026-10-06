@@ -370,6 +370,67 @@ gi: (foo, .)
 
 
 
+# Copy compactions (external to local) populate the properties of the new table
+# backings, and these properties match those loaded from disk after a reopen.
+
+reset
+----
+
+build-remote f10 block-size=100 index-block-size=100
+a#0,SET:aaaaaaaaaaaaaaaaaaaa
+b#0,SET:bbbbbbbbbbbbbbbbbbbb
+c#0,SET:cccccccccccccccccccc
+d#0,SET:dddddddddddddddddddd
+e#0,SET:eeeeeeeeeeeeeeeeeeee
+f#0,SET:ffffffffffffffffffff
+g#0,SET:gggggggggggggggggggg
+h#0,SET:hhhhhhhhhhhhhhhhhhhh
+i#0,SET:iiiiiiiiiiiiiiiiiiii
+j#0,SET:jjjjjjjjjjjjjjjjjjjj
+k#0,SET:kkkkkkkkkkkkkkkkkkkk
+l#0,SET:llllllllllllllllllll
+m#0,SET:mmmmmmmmmmmmmmmmmmmm
+n#0,SET:nnnnnnnnnnnnnnnnnnnn
+o#0,SET:oooooooooooooooooooo
+p#0,SET:pppppppppppppppppppp
+q#0,SET:qqqqqqqqqqqqqqqqqqqq
+r#0,SET:rrrrrrrrrrrrrrrrrrrr
+s#0,SET:ssssssssssssssssssss
+t#0,SET:tttttttttttttttttttt
+u#0,SET:uuuuuuuuuuuuuuuuuuuu
+v#0,SET:vvvvvvvvvvvvvvvvvvvv
+w#0,SET:wwwwwwwwwwwwwwwwwwww
+x#0,SET:xxxxxxxxxxxxxxxxxxxx
+y#0,SET:yyyyyyyyyyyyyyyyyyyy
+z#0,SET:zzzzzzzzzzzzzzzzzzzz
+----
+
+ingest-external
+f10 bounds=(m,p)
+----
+
+table-props wait-for-stats
+----
+L6:
+  000004(000004): entries=26 deletions=0 compression=None:229,Snappy:1794/2548
+
+download a z via-backing-file-download
+----
+ok
+
+table-props
+----
+L6:
+  000005(000005): entries=26 deletions=0 compression=None:49,Snappy:276/392
+
+reopen
+----
+
+table-props wait-for-stats
+----
+L6:
+  000005(000005): entries=26 deletions=0 compression=None:49,Snappy:276/392
+
 # Test seeks with keys outside of the synthetic prefix range.
 reset
 ----
