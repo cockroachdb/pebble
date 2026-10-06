@@ -42,6 +42,10 @@ type RawColumnWriter struct {
 	blockPropsEncoder   blockPropertiesEncoder
 	obsoleteCollector   obsoleteKeyBlockPropertyCollector
 	props               Properties
+	// copySourceCompressionStats are the compression stats of the table from
+	// which data blocks are copied verbatim (see copyProperties and
+	// copyDataBlocks).
+	copySourceCompressionStats block.CompressionStats
 	// block writers buffering unflushed data.
 	dataBlock struct {
 		colblk.DataBlockEncoder
@@ -1355,6 +1359,11 @@ func (w *RawColumnWriter) copyDataBlocks(
 		for i := firstBlockIdx; i <= lastBlockIdx; i++ {
 			offsetDiff := blocks[i].bh.Offset - blocks[firstBlockIdx].bh.Offset
 			dataWithTrailer := buf[offsetDiff : offsetDiff+blocks[i].bh.Length+block.TrailerLen]
+			// The block bypasses the compressor; account for it in the
+			// compression stats that we write out.
+			if err := w.layout.physBlockMaker.Compressor.CopiedBlock(dataWithTrailer, &w.copySourceCompressionStats); err != nil {
+				return err
+			}
 			pb := block.AlreadyEncodedPhysicalBlock(dataWithTrailer)
 			if err := w.enqueuePhysicalBlock(pb.Take(), blocks[i].sep); err != nil {
 				return err
@@ -1422,6 +1431,11 @@ func (w *RawColumnWriter) copyProperties(props Properties) {
 	w.props.TopLevelIndexSize = 0
 	w.props.IndexSize = 0
 	w.props.IndexType = 0
+	// The compression stats are re-derived from the blocks we write (see
+	// copyDataBlocks); the source's stats are only used to infer the
+	// compression levels of copied blocks. If they can't be parsed, the levels
+	// are left unset.
+	w.copySourceCompressionStats, _ = block.ParseCompressionStats(props.CompressionStats)
 }
 
 // SetValueSeparationProps implements RawWriter.

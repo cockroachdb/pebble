@@ -7,6 +7,7 @@ package sstable
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCopySpan(t *testing.T) {
@@ -198,4 +200,97 @@ func TestCopySpan(t *testing.T) {
 			return ""
 		}
 	})
+}
+
+// TestCopySpanCompressionStats verifies that the compression stats of a table
+// produced by CopySpan account for all its blocks, regardless of whether the
+// data blocks were copied verbatim (block cache misses) or recompressed (block
+// cache hits).
+func TestCopySpanCompressionStats(t *testing.T) {
+	ctx := context.Background()
+	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
+	key := func(i int) []byte { return fmt.Appendf(nil, "key%05d", i) }
+	const numKeys = 1000
+
+	for _, profile := range []*block.CompressionProfile{
+		block.SnappyCompression, block.MinLZCompression, block.ZstdCompression,
+	} {
+		t.Run(profile.Name, func(t *testing.T) {
+			// Use the same compression for the source and the copy, so that
+			// recompressing a block reproduces the original block.
+			wOpts := WriterOptions{
+				Comparer:    testkeys.Comparer,
+				KeySchema:   &keySchema,
+				TableFormat: TableFormatMax,
+				BlockSize:   512,
+				Compression: profile,
+			}
+			src := &objstorage.MemObj{}
+			w := NewWriter(src, wOpts)
+			rng := rand.New(rand.NewPCG(0, 1))
+			value := make([]byte, 100)
+			for i := range numKeys {
+				// Alternate between runs of compressible and incompressible values,
+				// so that some blocks are stored uncompressed.
+				for j := range value {
+					if (i/50)%2 == 0 {
+						value[j] = byte(rng.Uint32())
+					} else {
+						value[j] = byte(j % 4)
+					}
+				}
+				require.NoError(t, w.Set(key(i), value))
+			}
+			require.NoError(t, w.Close())
+
+			// copySpan populates a fresh block cache by reading the keys in
+			// [warmStart, warmEnd), then copies a span of the source table and
+			// returns the compression stats of the result.
+			copySpan := func(warmStart, warmEnd int) string {
+				c := cache.New(16 << 20)
+				defer c.Unref()
+				h := c.NewHandle()
+				defer h.Close()
+				rOpts := ReaderOptions{
+					ReaderOptions: block.ReaderOptions{
+						CacheOpts: sstableinternal.CacheOptions{CacheHandle: h, FileNum: 1},
+					},
+					Comparer:   testkeys.Comparer,
+					KeySchemas: KeySchemas{keySchema.Name: &keySchema},
+				}
+				r, err := NewReader(ctx, src, rOpts)
+				require.NoError(t, err)
+				defer func() { require.NoError(t, r.Close()) }()
+				if warmStart < warmEnd {
+					iter, err := r.NewIter(blockiter.NoTransforms, key(warmStart), key(warmEnd), AssertNoBlobHandles)
+					require.NoError(t, err)
+					for kv := iter.First(); kv != nil; kv = iter.Next() {
+					}
+					require.NoError(t, iter.Close())
+				}
+				out := &objstorage.MemObj{}
+				_, err = CopySpan(ctx, src, r, 0 /* level */, out, wOpts,
+					base.MakeInternalKey(key(200), base.SeqNumMax, base.InternalKeyKindSet),
+					base.MakeInternalKey(key(800), 0, base.InternalKeyKindSet))
+				require.NoError(t, err)
+
+				outR, err := NewMemReader(out.Data(), rOpts)
+				require.NoError(t, err)
+				defer func() { require.NoError(t, outR.Close()) }()
+				props, err := outR.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+				require.NoError(t, err)
+				return props.CompressionStats
+			}
+
+			warm := copySpan(0, numKeys)
+			// The data blocks dominate the stats; make sure the expected settings
+			// are present.
+			// Uncompressed blocks can be accounted under a setting with a level
+			// (e.g. None3).
+			require.Contains(t, warm, "None")
+			require.Contains(t, warm, profile.DataBlocks.Setting.String()+":")
+			require.Equal(t, warm, copySpan(0, 0), "cold cache")
+			require.Equal(t, warm, copySpan(400, 600), "partially warm cache")
+		})
+	}
 }
