@@ -158,6 +158,10 @@ func (p *Properties) load(i iter.Seq2[[]byte, []byte]) error {
 		case "pebble.compression_stats":
 			p.Loaded |= 1 << _bit_CompressionStats
 			p.CompressionStats = string(v)
+		case "pebble.max.user-key.size":
+			p.Loaded |= 1 << _bit_MaxUserKeySize
+			n, _ := binary.Uvarint(v)
+			p.MaxUserKeySize = n
 		default:
 			if _, denied := ignoredInternalProperties[string(k)]; !denied {
 				if p.UserProperties == nil {
@@ -398,6 +402,12 @@ func (p *Properties) encodeAll() map[string][]byte {
 		copy(val, p.CompressionStats)
 		m["pebble.compression_stats"] = val
 	}
+	if p.MaxUserKeySize != 0 {
+		val := alloc(10)
+		n := binary.PutUvarint(val, p.MaxUserKeySize)
+		val = val[:n]
+		m["pebble.max.user-key.size"] = val
+	}
 	return m
 }
 
@@ -519,6 +529,9 @@ func (p *Properties) String() string {
 	if p.CompressionStats != "" || p.isLoaded(_bit_CompressionStats) {
 		fmt.Fprintf(&buf, "%s: %v\n", "pebble.compression_stats", p.CompressionStats)
 	}
+	if p.MaxUserKeySize != 0 || p.isLoaded(_bit_MaxUserKeySize) {
+		fmt.Fprintf(&buf, "%s: %v\n", "pebble.max.user-key.size", p.MaxUserKeySize)
+	}
 	if len(p.UserProperties) > 0 {
 		// Print the user properties in alphabetical order.
 		for _, k := range slices.Sorted(maps.Keys(p.UserProperties)) {
@@ -572,5 +585,6 @@ const (
 	_bit_TopLevelIndexSize          = 34
 	_bit_CompressionName            = 35
 	_bit_CompressionStats           = 36
-	_numPropBits                    = 37
+	_bit_MaxUserKeySize             = 37
+	_numPropBits                    = 38
 )

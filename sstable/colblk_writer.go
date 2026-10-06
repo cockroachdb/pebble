@@ -310,6 +310,7 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 		// writer because this writer does not flatten them into row key-value
 		// pairs.
 		w.props.RawKeySize += uint64(len(span.Start) + len(span.End))
+		w.props.MaxUserKeySize = max(w.props.MaxUserKeySize, uint64(len(span.Start)), uint64(len(span.End)))
 		count := uint64(len(span.Keys))
 		w.props.NumEntries += count
 		w.props.NumDeletions += count
@@ -320,6 +321,7 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 		// writer because this writer does not flatten them into row key-value
 		// pairs.
 		w.props.RawRangeKeyKeySize += uint64(len(span.Start) + len(span.End))
+		w.props.MaxUserKeySize = max(w.props.MaxUserKeySize, uint64(len(span.Start)), uint64(len(span.End)))
 		for _, k := range span.Keys {
 			w.props.RawRangeKeyValueSize += uint64(len(k.Value))
 			switch k.Kind() {
@@ -549,6 +551,7 @@ func (w *RawColumnWriter) add(
 	}
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(valueLen)
+	w.props.MaxUserKeySize = max(w.props.MaxUserKeySize, uint64(len(key.UserKey)))
 	return nil
 }
 
@@ -1143,11 +1146,11 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		}
 	}
 
+	props, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+	if err != nil {
+		return errors.Wrap(err, "reading properties block")
+	}
 	if len(blocks) > 0 {
-		props, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
-		if err != nil {
-			return errors.Wrap(err, "reading properties block")
-		}
 		w.meta.updateSeqNum(blocks[0].start.SeqNum())
 		w.props.NumEntries = props.NumEntries
 		w.props.RawKeySize = props.RawKeySize
@@ -1160,6 +1163,9 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
 		return errors.Wrap(err, "rewriting range key blocks")
 	}
+	// The range keys were added through EncodeSpan, which accounted for their
+	// bounds in w.props.MaxUserKeySize.
+	w.props.MaxUserKeySize = rewrittenMaxUserKeySize(&props, w.props.MaxUserKeySize, from, to)
 	// Copy over the filter block if it exists.
 	if w.filterBlock != nil {
 		if filterBlockBH, ok := l.FilterByName(w.filterBlock.metaName()); ok {

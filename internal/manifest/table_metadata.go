@@ -8,6 +8,7 @@ import (
 	"bytes"
 	stdcmp "cmp"
 	"fmt"
+	"math"
 	"sync/atomic"
 
 	"github.com/cockroachdb/crlib/crmath"
@@ -423,6 +424,10 @@ type TableBackingProperties struct {
 	TombstoneDenseBlocksRatio float64
 
 	CompressionStats block.CompressionStats
+	// MaxUserKeySize is the size of the largest user key in the physical table,
+	// or 0 if unknown. See sstable.Properties.MaxUserKeySize. Saturates at
+	// math.MaxUint32.
+	MaxUserKeySize uint32
 }
 
 // NumPointDeletions is the number of point deletions in the sstable. For virtual
@@ -457,6 +462,7 @@ func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBacki
 		NumRangeKeyDels:            props.NumRangeKeyDels,
 		NumRangeKeySets:            props.NumRangeKeySets,
 		ValueBlocksSize:            props.ValueBlocksSize,
+		MaxUserKeySize:             uint32(min(props.MaxUserKeySize, math.MaxUint32)),
 	}
 	if props.NumDataBlocks != 0 {
 		b.props.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
