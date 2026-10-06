@@ -35,16 +35,16 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L6       463B |      1  463B |      0     0 |     0B     0B |     0B |      1  463B |   1     0
+   L6       491B |      1  491B |      0     0 |     0B     0B |     0B |      1  491B |   1     0
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       463B |      1  463B |      0     0 |     0B     0B |   463B |      1  463B |   1  1.00
+total       491B |      1  491B |      0     0 |     0B     0B |   491B |      1  491B |   1  1.00
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
    L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      0   463B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      0   491B     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       0       0        0     0     0     0        0     0      0     0       0
@@ -85,14 +85,14 @@ COMPACTIONS
                0B |            0 (0B) |            0 (0B) |                 0 |                  0
 
 KEYS
-      range keys |       tombstones |      missized tombstones |      point dels |      range dels
------------------+------------------+--------------------------+-----------------+----------------
-               0 |                0 |                        0 |              0B |              0B
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels |           max key size
+-----------------+------------------+--------------------------+-----------------+-----------------+-----------------------
+               0 |                0 |                        0 |              0B |              0B |                     1B
 
 COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
-      unknown |          463B |
+      unknown |          491B |
 ----
 ----
 
@@ -393,7 +393,7 @@ num-entries: 2
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1124
+range-deletions-bytes-estimate: 1175
 
 # A set operation takes precedence over a range deletion at the same
 # sequence number as can occur during ingestion.

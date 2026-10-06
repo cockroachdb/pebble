@@ -62,9 +62,9 @@ COMPACTIONS
                0B |            0 (0B) |            0 (0B) |                 0 |                  0
 
 KEYS
-      range keys |       tombstones |      missized tombstones |      point dels |      range dels
------------------+------------------+--------------------------+-----------------+----------------
-               0 |                0 |                        0 |              0B |              0B
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels |           max key size
+-----------------+------------------+--------------------------+-----------------+-----------------+-----------------------
+               0 |                0 |                        0 |              0B |              0B |         0B (1 unknown)
 
 COMPRESSION
     algorithm |        tables |    blob files
@@ -128,9 +128,9 @@ COMPACTIONS
                0B |            0 (0B) |            0 (0B) |                 0 |                  0
 
 KEYS
-      range keys |       tombstones |      missized tombstones |      point dels |      range dels
------------------+------------------+--------------------------+-----------------+----------------
-               0 |                0 |                        0 |              0B |              0B
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels |           max key size
+-----------------+------------------+--------------------------+-----------------+-----------------+-----------------------
+               0 |                0 |                        0 |              0B |              0B |         0B (1 unknown)
 
 COMPRESSION
     algorithm |        tables |    blob files

@@ -317,6 +317,24 @@ type Metrics struct {
 		// A cumulative total number of missized DELSIZED keys encountered by
 		// compactions since the database was opened.
 		MissizedTombstonesCount uint64
+		// MaxUserKeySize is the size in bytes of the largest user key in the
+		// LSM's sstables, considering point keys as well as range deletion and
+		// range key bounds; keys in memtables (including flushable ingests) are
+		// not reflected. It is derived from the tables' properties and only
+		// reflects tables for which the property is known (see
+		// MaxUserKeySizeUnknownTables).
+		//
+		// It can be an overestimate: virtual tables use the value of their
+		// backing table; tables produced by suffix rewriting or span copying
+		// record an upper bound; and the lengths of synthetic prefixes and
+		// suffixes are added.
+		MaxUserKeySize uint64
+		// MaxUserKeySizeUnknownTables is the number of tables (including virtual
+		// tables) not reflected in MaxUserKeySize, either because their
+		// properties are not loaded (stats collection is in progress or
+		// disabled), or because they were written by a Pebble version that did
+		// not record the largest key size (or derived from such a table).
+		MaxUserKeySizeUnknownTables uint64
 	}
 
 	Snapshots struct {
@@ -836,6 +854,8 @@ var (
 		table.String("point dels", 15, table.AlignRight, func(i keysInfo) string { return i.pointDels }),
 		table.Div(),
 		table.String("range dels", 15, table.AlignRight, func(i keysInfo) string { return i.rangeDels }),
+		table.Div(),
+		table.String("max key size", 22, table.AlignRight, func(i keysInfo) string { return i.maxKeySize }),
 	)
 	compressionTableHeader = `COMPRESSION`
 	compressionTable       = table.Define[compressionInfo](
@@ -954,6 +974,7 @@ type keysInfo struct {
 	missizedTombstones string
 	pointDels          string
 	rangeDels          string
+	maxKeySize         string
 }
 
 type compressionInfo struct {
@@ -1135,6 +1156,11 @@ func (m *Metrics) String() string {
 		missizedTombstones: fmt.Sprintf("%d%s", m.Keys.MissizedTombstonesCount, ifNonZero(m.Keys.MissizedTombstonesCount, "!!")),
 		pointDels:          humanizeBytes(m.Table.Garbage.PointDeletionsBytesEstimate),
 		rangeDels:          humanizeBytes(m.Table.Garbage.RangeDeletionsBytesEstimate),
+		maxKeySize:         humanizeBytes(m.Keys.MaxUserKeySize),
+	}
+	if m.Keys.MaxUserKeySizeUnknownTables > 0 {
+		keysInfoContents.maxKeySize = fmt.Sprintf("%s (%s unknown)",
+			keysInfoContents.maxKeySize, humanizeCount(m.Keys.MaxUserKeySizeUnknownTables))
 	}
 	cur = cur.WriteString(keysInfoTableTopHeader).NewlineReturn()
 	cur = keysInfoTable.Render(cur, table.RenderOptions{}, keysInfoContents)

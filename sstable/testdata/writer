@@ -240,9 +240,9 @@ sstable
  ├── index  offset: 105  length: 22
  ├── index  offset: 132  length: 22
  ├── top-index  offset: 159  length: 48
- ├── properties  offset: 212  length: 345
- ├── meta-index  offset: 562  length: 33
- └── footer  offset: 600  length: 53
+ ├── properties  offset: 212  length: 373
+ ├── meta-index  offset: 590  length: 33
+ └── footer  offset: 628  length: 53
 
 scan
 ----
@@ -288,6 +288,6 @@ sstable
  ├── data  offset: 0  length: 8
  ├── index  offset: 13  length: 21
  ├── range-key  offset: 39  length: 79
- ├── properties  offset: 123  length: 375
- ├── meta-index  offset: 503  length: 57
- └── footer  offset: 565  length: 53
+ ├── properties  offset: 123  length: 396
+ ├── meta-index  offset: 524  length: 57
+ └── footer  offset: 586  length: 53

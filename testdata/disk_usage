@@ -28,13 +28,13 @@ flush
 
 estimate-disk-usage a z
 ----
-size: 682
+size: 705
 
 
 
 estimate-disk-usage-by-backing-type a z
 ----
-total: 682, remote: 0, external: 0
+total: 705, remote: 0, external: 0
 
 
 # Test specific ranges within the data
@@ -82,12 +82,12 @@ flush
 # Test disk usage after ingestion
 estimate-disk-usage a z
 ----
-size: 1358
+size: 1404
 
 
 estimate-disk-usage-by-backing-type a z
 ----
-total: 1358, remote: 0, external: 0
+total: 1404, remote: 0, external: 0
 
 
 # Test with remote files and external files
@@ -101,7 +101,7 @@ o#0,SET = foo
 
 estimate-disk-usage-by-backing-type a z
 ----
-total: 1358, remote: 0, external: 0
+total: 1404, remote: 0, external: 0
 
 ingest-external 
 ext2 bounds=(k,o)
@@ -109,7 +109,7 @@ ext2 bounds=(k,o)
 
 estimate-disk-usage-by-backing-type a z
 ----
-total: 2631, remote: 1273, external: 1273
+total: 2696, remote: 1292, external: 1292
 
 # Test with compaction
 compact c-e
@@ -130,7 +130,7 @@ set e 15
 
 estimate-disk-usage a e
 ----
-size: 682
+size: 705
 
 ingest ext3
 ----
@@ -140,7 +140,7 @@ flush
 
 estimate-disk-usage d j
 ----
-size: 876
+size: 899
 
 close db1
 ----

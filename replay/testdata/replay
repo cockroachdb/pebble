@@ -6,20 +6,20 @@ tree
           /
             build/
       89      000004.log
-     480      000005.sst
+     508      000005.sst
       49      000006.log
-     508      000007.sst
+     536      000007.sst
        0      LOCK
      133      MANIFEST-000001
     2800      OPTIONS-000003
        0      marker.format-version.000001.013
        0      marker.manifest.000001.MANIFEST-000001
             simple/
-     508      000007.sst
+     536      000007.sst
      133      MANIFEST-000001
               checkpoint/
       11        000004.log
-     480        000005.sst
+     508        000005.sst
       85        MANIFEST-000001
     2800        OPTIONS-000003
        0        marker.format-version.000001.013
