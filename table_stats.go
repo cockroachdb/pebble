@@ -1180,6 +1180,12 @@ type aggregatedTableProps struct {
 	NumDeletions uint64
 	// ValueBlocksSize is the sum of the tables' Properties.ValueBlocksSize.
 	ValueBlocksSize uint64
+	// MaxUserKeySize is the maximum of the tables' (upper bounds of)
+	// Properties.MaxUserKeySize, among tables for which it is known.
+	MaxUserKeySize uint64
+	// MaxUserKeySizeUnknownTables is the number of tables for which
+	// Properties.MaxUserKeySize is not known.
+	MaxUserKeySizeUnknownTables uint64
 
 	CompressionMetrics CompressionMetrics
 }
@@ -1191,6 +1197,8 @@ var tablePropsAnnotator = manifest.MakeTableAnnotator[aggregatedTableProps](
 			dst.NumRangeKeySets += src.NumRangeKeySets
 			dst.NumDeletions += src.NumDeletions
 			dst.ValueBlocksSize += src.ValueBlocksSize
+			dst.MaxUserKeySize = max(dst.MaxUserKeySize, src.MaxUserKeySize)
+			dst.MaxUserKeySizeUnknownTables += src.MaxUserKeySizeUnknownTables
 			dst.CompressionMetrics.MergeWith(&src.CompressionMetrics)
 		},
 		Table: func(t *manifest.TableMetadata) (v aggregatedTableProps, cacheOK bool) {
@@ -1199,6 +1207,17 @@ var tablePropsAnnotator = manifest.MakeTableAnnotator[aggregatedTableProps](
 				v.NumRangeKeySets = props.NumRangeKeySets
 				v.NumDeletions = props.NumDeletions
 				v.ValueBlocksSize = props.ValueBlocksSize
+			}
+			if propsValid && props.MaxUserKeySize != 0 {
+				// Keys of tables with a synthetic prefix and/or suffix are
+				// transformed when read. The prefix is prepended to every key and
+				// the suffix replaces any existing suffix, so the resulting keys are
+				// at most this much longer.
+				v.MaxUserKeySize = uint64(props.MaxUserKeySize) +
+					uint64(t.SyntheticPrefixAndSuffix.PrefixLen()) +
+					uint64(t.SyntheticPrefixAndSuffix.SuffixLen())
+			} else {
+				v.MaxUserKeySizeUnknownTables = 1
 			}
 			if !propsValid || props.CompressionStats.IsEmpty() {
 				v.CompressionMetrics.CompressedBytesWithoutStats = t.ScaleStatistic(t.Size)

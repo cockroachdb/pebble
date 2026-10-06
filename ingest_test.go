@@ -238,7 +238,7 @@ func TestIngestLoadRand(t *testing.T) {
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: version.MaxTableFormat(),
 			})
-			var count, rawKeySize uint64
+			var count, rawKeySize, maxUserKeySize uint64
 			for i := range keys {
 				if i > 0 && base.InternalCompare(cmp, keys[i-1], keys[i]) == 0 {
 					// Duplicate key, ignore.
@@ -247,6 +247,7 @@ func TestIngestLoadRand(t *testing.T) {
 				require.NoError(t, w.Add(keys[i], nil, false /* forceObsolete */, base.KVMeta{}))
 				count++
 				rawKeySize += uint64(keys[i].Size())
+				maxUserKeySize = max(maxUserKeySize, uint64(len(keys[i].UserKey)))
 			}
 			expected[i].TableMetadata.PopulateStats(&manifest.TableStats{})
 			require.NoError(t, w.Close())
@@ -257,9 +258,10 @@ func TestIngestLoadRand(t *testing.T) {
 			expected[i].Size = meta.Size
 			expected[i].InitPhysicalBacking()
 			expected[i].TableBacking.PopulateProperties(&sstable.Properties{
-				RawKeySize:    rawKeySize,
-				NumEntries:    count,
-				NumDataBlocks: 1,
+				RawKeySize:     rawKeySize,
+				NumEntries:     count,
+				NumDataBlocks:  1,
+				MaxUserKeySize: maxUserKeySize,
 			})
 		}()
 	}

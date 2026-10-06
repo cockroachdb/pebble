@@ -107,6 +107,7 @@ rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.compression: Snappy
 pebble.compression_stats: None:107
+pebble.max.user-key.size: 1
 obsolete-key: hex:0074
 
 # The range tombstone upper bound is exclusive, so a point operation
@@ -235,9 +236,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 483
- ├── meta-index  offset: 903  length: 33
- └── footer  offset: 941  length: 53
+ ├── properties  offset: 415  length: 504
+ ├── meta-index  offset: 924  length: 33
+ └── footer  offset: 962  length: 53
 
 # Exercise the non-Reader layout-decoding codepath.
 
@@ -251,9 +252,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 483
- ├── meta-index  offset: 903  length: 33
- └── footer  offset: 941  length: 53
+ ├── properties  offset: 415  length: 504
+ ├── meta-index  offset: 924  length: 33
+ └── footer  offset: 962  length: 53
 
 scan
 ----
@@ -298,9 +299,9 @@ layout
 sstable
  ├── index  offset: 0  length: 28
  ├── range-key  offset: 33  length: 84
- ├── properties  offset: 122  length: 491
- ├── meta-index  offset: 618  length: 57
- └── footer  offset: 680  length: 53
+ ├── properties  offset: 122  length: 512
+ ├── meta-index  offset: 639  length: 57
+ └── footer  offset: 701  length: 53
 
 props
 ----
@@ -324,6 +325,7 @@ pebble.raw.range-key.key.size: 6
 pebble.raw.range-key.value.size: 9
 rocksdb.compression: Snappy
 pebble.compression_stats: None:112
+pebble.max.user-key.size: 1
 obsolete-key: hex:0074
 
 open-writer disable-value-blocks

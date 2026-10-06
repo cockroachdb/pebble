@@ -1,0 +1,631 @@
+# The metric is the size of the largest user key across all levels.
+
+init
+----
+
+max-key-size
+----
+max user key size: 0
+unknown tables: 0
+
+batch
+set a 1
+set bbbbbb 2
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-bbbbbb#11,SET]
+
+compact a-z
+----
+L6:
+  000005:[a#10,SET-bbbbbb#11,SET]
+
+batch
+set cccccccccc 3
+set d 4
+----
+
+flush
+----
+L0.0:
+  000007:[cccccccccc#12,SET-d#13,SET]
+L6:
+  000005:[a#10,SET-bbbbbb#11,SET]
+
+max-key-size
+----
+L0:
+  000007: 10
+L6:
+  000005: 6
+max user key size: 10
+unknown tables: 0
+
+# The largest key can be the end key of a range deletion...
+
+batch
+del-range e eeeeeeeeeeeeeeeeeeee
+----
+
+flush
+----
+L0.0:
+  000007:[cccccccccc#12,SET-d#13,SET]
+  000009:[e#14,RANGEDEL-eeeeeeeeeeeeeeeeeeee#inf,RANGEDEL]
+L6:
+  000005:[a#10,SET-bbbbbb#11,SET]
+
+max-key-size
+----
+L0:
+  000007: 10
+  000009: 20
+L6:
+  000005: 6
+max user key size: 20
+unknown tables: 0
+
+# ... or a range key bound.
+
+batch
+range-key-set ffffffffffffffffffffffffffffff g @5 foo
+----
+
+flush
+----
+L0.0:
+  000007:[cccccccccc#12,SET-d#13,SET]
+  000009:[e#14,RANGEDEL-eeeeeeeeeeeeeeeeeeee#inf,RANGEDEL]
+  000011:[ffffffffffffffffffffffffffffff#15,RANGEKEYSET-g#inf,RANGEKEYSET]
+L6:
+  000005:[a#10,SET-bbbbbb#11,SET]
+
+max-key-size
+----
+L0:
+  000007: 10
+  000009: 20
+  000011: 30
+L6:
+  000005: 6
+max user key size: 30
+unknown tables: 0
+
+# Deleting the range key and the 10-byte key, then compacting everything into
+# L6, drops them along with the range deletion (which is elided at the
+# bottommost level); the annotator recomputes the maximum.
+
+batch
+range-key-del ffffffffffffffffffffffffffffff g
+del cccccccccc
+----
+
+flush
+----
+L0.1:
+  000013:[cccccccccc#17,DEL-g#inf,RANGEKEYDEL]
+L0.0:
+  000007:[cccccccccc#12,SET-d#13,SET]
+  000009:[e#14,RANGEDEL-eeeeeeeeeeeeeeeeeeee#inf,RANGEDEL]
+  000011:[ffffffffffffffffffffffffffffff#15,RANGEKEYSET-g#inf,RANGEKEYSET]
+L6:
+  000005:[a#10,SET-bbbbbb#11,SET]
+
+compact a-z
+----
+L6:
+  000005:[a#10,SET-bbbbbb#11,SET]
+  000014:[d#0,SET-d#0,SET]
+
+max-key-size
+----
+L6:
+  000005: 6
+  000014: 1
+max user key size: 6
+unknown tables: 0
+
+# Deleting the 6-byte key with a range deletion (whose bounds are short) and
+# compacting reduces the maximum again.
+
+batch
+del-range b c
+----
+
+flush
+----
+L0.0:
+  000016:[b#18,RANGEDEL-c#inf,RANGEDEL]
+L6:
+  000005:[a#10,SET-bbbbbb#11,SET]
+  000014:[d#0,SET-d#0,SET]
+
+max-key-size
+----
+L0:
+  000016: 1
+L6:
+  000005: 6
+  000014: 1
+max user key size: 6
+unknown tables: 0
+
+compact a-z
+----
+L6:
+  000017:[a#0,SET-a#0,SET]
+  000014:[d#0,SET-d#0,SET]
+
+max-key-size
+----
+L6:
+  000017: 1
+  000014: 1
+max user key size: 1
+unknown tables: 0
+
+# Ingested tables written with a row-based format are accounted for, including
+# their range deletions and range keys.
+
+build ext1 table-format=Pebble,v4
+set h 1
+del-range hhhhhhhhhhhh i
+----
+
+build ext2 table-format=Pebble,v4
+set j 1
+range-key-set j jjjjjjjjjjjjjjj @1 foo
+----
+
+ingest ext1 ext2
+----
+L6:
+  000017:[a#0,SET-a#0,SET]
+  000014:[d#0,SET-d#0,SET]
+  000018:[h#19,SET-i#inf,RANGEDEL]
+  000019:[j#20,RANGEKEYSET-jjjjjjjjjjjjjjj#inf,RANGEKEYSET]
+
+max-key-size
+----
+L6:
+  000017: 1
+  000014: 1
+  000018: 12
+  000019: 15
+max user key size: 15
+unknown tables: 0
+
+# Excising part of a table produces virtual tables which share the backing and
+# inherit its value; the excised key is not visible anymore, but the virtual
+# tables still report it (the value is an upper bound).
+
+init
+----
+
+batch
+set a 1
+set bbbbbbbbbbbbbbbbbbbb 2
+set c 3
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-c#12,SET]
+
+compact a-z
+----
+L6:
+  000005:[a#10,SET-c#12,SET]
+
+max-key-size
+----
+L6:
+  000005: 20
+max user key size: 20
+unknown tables: 0
+
+excise b bz
+----
+L6:
+  000006(000005):[a#10,SET-a#10,SET]
+  000007(000005):[c#12,SET-c#12,SET]
+
+max-key-size
+----
+L6:
+  000006(000005): 20
+  000007(000005): 20
+max user key size: 20
+unknown tables: 0
+
+# The same, through ingest-and-excise.
+
+build ext1
+set b 1
+----
+
+ingest-and-excise ext1 excise=b-bz
+----
+L6:
+  000006(000005):[a#10,SET-a#10,SET]
+  000008:[b#15,SET-b#15,SET]
+  000007(000005):[c#12,SET-c#12,SET]
+
+max-key-size
+----
+L6:
+  000006(000005): 20
+  000008: 1
+  000007(000005): 20
+max user key size: 20
+unknown tables: 0
+
+# When the virtual tables are rewritten by a compaction, the outputs are
+# physical tables with exact values.
+
+batch
+set a 2
+set c 4
+----
+
+flush
+----
+L0.0:
+  000010:[a#16,SET-c#17,SET]
+L6:
+  000006(000005):[a#10,SET-a#10,SET]
+  000008:[b#15,SET-b#15,SET]
+  000007(000005):[c#12,SET-c#12,SET]
+
+compact a-z
+----
+L6:
+  000011:[a#0,SET-c#0,SET]
+
+max-key-size
+----
+L6:
+  000011: 1
+max user key size: 1
+unknown tables: 0
+
+# External tables with a synthetic prefix and/or suffix report the backing's
+# value plus the synthetic prefix and suffix lengths. This is an upper bound:
+# the synthetic suffix replaces the existing suffix.
+
+init
+----
+
+build-remote ext
+aaaa@10#0,SET:a
+b@11#0,SET:b
+----
+
+ingest-external
+ext bounds=(a,c) synthetic-suffix=@123
+ext bounds=(xyza,xyzc) synthetic-prefix=xyz
+----
+L6:
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
+  000005(000004):[xyza#11,DELSIZED-xyzc#inf,RANGEDEL]
+
+max-key-size
+----
+L6:
+  000004(000004): 7 synthetic-suffix="@123"
+  000005(000004): 7 synthetic-prefix="xyz"
+max user key size: 11
+unknown tables: 0
+
+build-remote ext2
+c@1#0,SET:c
+----
+
+ingest-external
+ext2 bounds=(ppc,ppd) synthetic-prefix=pp synthetic-suffix=@1000000
+----
+L6:
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
+  000006(000006):[ppc#12,DELSIZED-ppd#inf,RANGEDEL]
+  000005(000004):[xyza#11,DELSIZED-xyzc#inf,RANGEDEL]
+
+max-key-size
+----
+L6:
+  000004(000004): 7 synthetic-suffix="@123"
+  000006(000006): 3 synthetic-prefix="pp" synthetic-suffix="@1000000"
+  000005(000004): 7 synthetic-prefix="xyz"
+max user key size: 13
+unknown tables: 0
+
+# Downloading materializes the external tables into local physical tables, with
+# exact values.
+
+download a z
+----
+L6:
+  000007:[aaaa@123#0,SET-b@123#0,SET]
+  000008:[ppc@1000000#0,SET-ppc@1000000#0,SET]
+  000009:[xyzaaaa@10#0,SET-xyzb@11#0,SET]
+
+max-key-size
+----
+L6:
+  000007: 8
+  000008: 11
+  000009: 10
+max user key size: 11
+unknown tables: 0
+
+# Tables whose properties have not been loaded yet are counted as unknown and
+# are not reflected in the maximum.
+
+init
+----
+
+batch
+set a 1
+set bbbbbb 2
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-bbbbbb#11,SET]
+
+batch
+set c 1
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-bbbbbb#11,SET]
+  000007:[c#12,SET-c#12,SET]
+
+reopen disable-table-stats
+----
+
+max-key-size
+----
+L0:
+  000005: properties not loaded
+  000007: properties not loaded
+max user key size: 0
+unknown tables: 2
+
+# Tables written after the reopen have their properties populated when they
+# are created.
+
+batch
+set dddddddddddd 1
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-bbbbbb#11,SET]
+  000007:[c#12,SET-c#12,SET]
+  000013:[dddddddddddd#13,SET-dddddddddddd#13,SET]
+
+max-key-size
+----
+L0:
+  000005: properties not loaded
+  000007: properties not loaded
+  000013: 12
+max user key size: 12
+unknown tables: 2
+
+reopen
+----
+
+max-key-size
+----
+L0:
+  000005: 6
+  000007: 1
+  000013: 12
+max user key size: 12
+unknown tables: 0
+
+# A DB created by an older version of Pebble, whose table does not have the
+# property. Format major version 16 (FormatVirtualSSTables) is needed for
+# excising.
+
+open-fixture db-stage-3 format-major-version=16
+----
+format major version: 16
+
+lsm
+----
+L0.0:
+  000004:[bar#14,DEL-foo#13,SET]
+
+max-key-size
+----
+L0:
+  000004: property absent
+max user key size: 0
+unknown tables: 1
+
+# Virtual tables derived from the old table are unknown too.
+
+excise baz bb
+----
+L0.0:
+  000012(000004):[bar#14,DEL-bar#14,DEL]
+  000013(000004):[foo#13,SET-foo#13,SET]
+
+max-key-size
+----
+L0:
+  000012(000004): property absent
+  000013(000004): property absent
+max user key size: 0
+unknown tables: 2
+
+# Once the tables are rewritten by a compaction, the property is known. The
+# maximum now reflects the keys of the old table.
+
+batch
+set z 1
+----
+
+flush
+----
+L0.0:
+  000012(000004):[bar#14,DEL-bar#14,DEL]
+  000013(000004):[foo#13,SET-foo#13,SET]
+  000015:[z#16,SET-z#16,SET]
+
+max-key-size
+----
+L0:
+  000012(000004): property absent
+  000013(000004): property absent
+  000015: 1
+max user key size: 1
+unknown tables: 2
+
+compact a-z
+----
+L6:
+  000016:[foo#0,SET-z#0,SET]
+
+max-key-size
+----
+L6:
+  000016: 3
+max user key size: 3
+unknown tables: 0
+
+# Copy compactions produce a new table backing whose properties are populated
+# by the copy compaction (the table stats collector skips the table since its
+# stats are copied from the input table).
+
+# Download via backing file download (external to local copy).
+
+init
+----
+
+build-remote ext
+aaaa@10#0,SET:a
+b@11#0,SET:b
+----
+
+ingest-external
+ext bounds=(a,c)
+----
+L6:
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
+
+max-key-size
+----
+L6:
+  000004(000004): 7
+max user key size: 7
+unknown tables: 0
+
+download a z via-backing-file-download
+----
+L6:
+  000005(000005):[a#10,DELSIZED-c#inf,RANGEDEL]
+
+max-key-size
+----
+L6:
+  000005(000005): 7
+max user key size: 7
+unknown tables: 0
+
+reopen
+----
+
+max-key-size
+----
+L6:
+  000005(000005): 7
+max user key size: 7
+unknown tables: 0
+
+# Two virtual tables sharing an external table: each downloaded copy carries
+# the external table's value (an upper bound).
+
+init
+----
+
+build-remote ext2
+aaaa@10#0,SET:a
+b@11#0,SET:b
+----
+
+ingest-external
+ext2 bounds=(a,b) size=100
+ext2 bounds=(b,c) size=300
+----
+L6:
+  000004(000004):[a#10,DELSIZED-b#inf,RANGEDEL]
+  000005(000004):[b#11,DELSIZED-c#inf,RANGEDEL]
+
+max-key-size
+----
+L6:
+  000004(000004): 7
+  000005(000004): 7
+max user key size: 7
+unknown tables: 0
+
+download a z via-backing-file-download
+----
+L6:
+  000006(000006):[a#10,DELSIZED-b#inf,RANGEDEL]
+  000007(000007):[b#11,DELSIZED-c#inf,RANGEDEL]
+
+max-key-size
+----
+L6:
+  000006(000006): 7
+  000007(000007): 7
+max user key size: 7
+unknown tables: 0
+
+# Moving a local table to shared storage (local to shared copy).
+
+init shared-lower
+----
+
+batch
+set aaaa 1
+----
+
+flush
+----
+L0.0:
+  000005:[aaaa#10,SET-aaaa#10,SET]
+
+compact a-z
+----
+L6:
+  000006:[aaaa#10,SET-aaaa#10,SET]
+
+max-key-size
+----
+L6:
+  000006: 4
+max user key size: 4
+unknown tables: 0
+
+reopen
+----
+
+max-key-size
+----
+L6:
+  000006: 4
+max user key size: 4
+unknown tables: 0

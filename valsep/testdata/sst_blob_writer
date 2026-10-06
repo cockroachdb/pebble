@@ -13,7 +13,7 @@ Span: j-k:{(#9,RANGEKEYDEL)}
 Span: k-l:{(#10,RANGEKEYUNSET,@5)}
 Span: l-m:{(#11,RANGEKEYSET,@10,foo)}
 ----
-size:1040
+size:1065
 blobfiles:
 1: {BlockCount: 1, ValueCount: 1, UncompressedValueBytes: 4 (0% MVCCGarbage), FileLen: 93}
 
@@ -24,7 +24,7 @@ a@1#1,SET:aa
 b@3#3,SET:bb
 c#4,SET:ccccc
 ----
-size:787
+size:815
 blobfiles:
 1: {BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 7 (29% MVCCGarbage), FileLen: 97}
 
@@ -35,7 +35,7 @@ a@1#1,SET:aa
 b@3#3,SET:bb
 c#4,SET:ccccc
 ----
-size:873
+size:886
 blobfiles:
 1: {BlockCount: 1, ValueCount: 1, UncompressedValueBytes: 5 (0% MVCCGarbage), FileLen: 94}
 
@@ -47,7 +47,7 @@ a@1#1,SET:aa
 b@3#3,SET:bb
 c#4,SET:ccccc
 ----
-size:792
+size:826
 blobfiles: none
 
 
@@ -57,7 +57,7 @@ a#2,SET:aaaa
 b#3,SET:bb
 c#4,SET:cccc
 ----
-size:758
+size:786
 blobfiles:
 1: {BlockCount: 1, ValueCount: 3, UncompressedValueBytes: 10 (0% MVCCGarbage), FileLen: 101}
 
@@ -69,7 +69,7 @@ a@1#1,SET:aaa
 b@3#3,SET:bbbbb
 b@1#1,SET:bbbbb
 ----
-size:874
+size:887
 blobfiles:
 1: {BlockCount: 1, ValueCount: 1, UncompressedValueBytes: 5 (100% MVCCGarbage), FileLen: 94}
 

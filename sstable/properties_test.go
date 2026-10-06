@@ -7,6 +7,8 @@ package sstable
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"math"
 	randv1 "math/rand"
 	"path/filepath"
 	"reflect"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -37,6 +40,7 @@ func TestPropertiesLoad(t *testing.T) {
 		MergerName:             "nullptr",
 		PropertyCollectorNames: "[]",
 		CompressionName:        "Snappy",
+		MaxUserKeySize:         14,
 	}
 
 	{
@@ -88,6 +92,7 @@ var testProps = Properties{
 	TopLevelIndexSize:       27,
 	CompressionName:         "compression name",
 	CompressionStats:        "Snappy:1024/2048",
+	MaxUserKeySize:          30,
 	UserProperties: map[string]string{
 		"user-prop-a": "1",
 		"user-prop-b": "2",
@@ -126,6 +131,51 @@ func TestPropertiesSave(t *testing.T) {
 		}
 		props.Loaded = 0
 		check1(&props)
+	}
+}
+
+// TestPropertiesMaxUserKeySize tests the encoding of the MaxUserKeySize
+// property across table formats.
+func TestPropertiesMaxUserKeySize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	for tf := TableFormatLevelDB; tf <= TableFormatMax; tf++ {
+		for _, v := range []uint64{0, 1, 127, 128, 1 << 20, 1<<32 + 1, math.MaxUint64} {
+			t.Run(fmt.Sprintf("%s/%d", tf, v), func(t *testing.T) {
+				p := testProps
+				p.MaxUserKeySize = v
+				m := p.accumulateProps(tf)
+				_, ok := m["pebble.max.user-key.size"]
+				// The property is not serialized when it is zero (unknown), nor for
+				// RocksDB formats.
+				expectPresent := v != 0 && tf >= TableFormatPebblev1
+				require.Equal(t, expectPresent, ok)
+
+				var data []byte
+				if tf >= TableFormatPebblev7 {
+					var w colblk.KeyValueBlockWriter
+					w.Init()
+					p.saveToColWriter(tf, &w)
+					data = w.Finish(w.Rows())
+				} else {
+					var w rowblk.Writer
+					w.RestartInterval = propertiesBlockRestartInterval
+					require.NoError(t, p.saveToRowWriter(tf, &w))
+					data = w.Finish()
+				}
+				loaded, err := decodePropertiesBlock(tf, data)
+				require.NoError(t, err)
+				require.Equal(t, expectPresent, loaded.isLoaded(_bit_MaxUserKeySize))
+				require.NotContains(t, loaded.UserProperties, "pebble.max.user-key.size")
+				if expectPresent {
+					require.Equal(t, v, loaded.MaxUserKeySize)
+					require.Contains(t, loaded.String(), fmt.Sprintf("pebble.max.user-key.size: %d\n", v))
+				} else {
+					require.Zero(t, loaded.MaxUserKeySize)
+					require.NotContains(t, loaded.String(), "pebble.max.user-key.size")
+				}
+			})
+		}
 	}
 }
 

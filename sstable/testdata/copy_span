@@ -17,7 +17,7 @@ d#5,SET: foobar
 
 copy-span test1 test2 b#10,SET cc#0,SET
 ----
-copied 555 bytes
+copied 583 bytes
 
 iter test2
 ----
@@ -27,7 +27,7 @@ d#5,SET: foobar
 
 copy-span test1 test21 a#10,SET bb#0,SET
 ----
-copied 552 bytes
+copied 580 bytes
 
 iter test21
 ----
@@ -65,7 +65,7 @@ j#5,SET: foo
 
 copy-span test22 test23 b#10,SET cc#0,SET
 ----
-copied 555 bytes
+copied 583 bytes
 
 iter test23
 ----
@@ -75,7 +75,7 @@ d#5,SET: foobar
 
 copy-span test22 test24 a#10,SET bb#0,SET
 ----
-copied 552 bytes
+copied 580 bytes
 
 iter test24
 ----
@@ -99,7 +99,7 @@ d#5,SET: foobar
 
 copy-span test3 test4 b#10,SET cc#0,SET
 ----
-copied 801 bytes
+copied 822 bytes
 
 iter test4
 ----
@@ -109,7 +109,7 @@ d#5,SET: foobar
 
 copy-span test3 test5 a#10,SET bb#0,SET
 ----
-copied 798 bytes
+copied 819 bytes
 
 iter test5
 ----
@@ -139,7 +139,7 @@ d#5,SET: foobar
 
 copy-span test32 test33 b#10,SET cc#0,SET
 ----
-copied 801 bytes
+copied 822 bytes
 
 iter test33
 ----
@@ -149,7 +149,7 @@ d#5,SET: foobar
 
 copy-span test32 test34 a#10,SET bb#0,SET
 ----
-copied 798 bytes
+copied 819 bytes
 
 iter test34
 ----
@@ -173,7 +173,7 @@ d#5,SET: foobar
 
 copy-span test3 test4 b#10,SET cc#0,SET
 ----
-copied 818 bytes
+copied 839 bytes
 
 iter test4
 ----
@@ -183,7 +183,7 @@ d#5,SET: foobar
 
 copy-span test3 test5 a#10,SET bb#0,SET
 ----
-copied 815 bytes
+copied 836 bytes
 
 iter test5
 ----
@@ -213,7 +213,7 @@ d#5,SET: foobar
 
 copy-span test32 test33 b#10,SET cc#0,SET
 ----
-copied 818 bytes
+copied 839 bytes
 
 iter test33
 ----
@@ -223,7 +223,7 @@ d#5,SET: foobar
 
 copy-span test32 test34 a#10,SET bb#0,SET
 ----
-copied 815 bytes
+copied 836 bytes
 
 iter test34
 ----
@@ -270,9 +270,9 @@ sstable
  ├── index  offset: 1135  length: 38
  ├── top-index  offset: 1178  length: 83
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 1266  length: 69
- ├── properties  offset: 1340  length: 518
- ├── meta-index  offset: 1863  length: 88
- └── footer  offset: 1956  length: 57
+ ├── properties  offset: 1340  length: 539
+ ├── meta-index  offset: 1884  length: 88
+ └── footer  offset: 1977  length: 57
 
 props bloom-sst
 ----
@@ -296,6 +296,7 @@ rocksdb.property.collectors: [obsolete-key]
 rocksdb.top-level.index.size: 83
 rocksdb.compression: Snappy
 pebble.compression_stats: None:527,Snappy:703/893
+pebble.max.user-key.size: 1
 obsolete-key: hex:00
 
 # Ensure that CopySpan copies over a filter block even if the writer options are
@@ -303,7 +304,7 @@ obsolete-key: hex:00
 
 copy-span bloom-sst bloom-sst-copy b#10,SET cc#0,SET filter=my-custom-filter/bloom(10)
 ----
-copied 970 bytes
+copied 991 bytes
 
 describe bloom-sst-copy
 ----
@@ -313,6 +314,6 @@ sstable
  ├── data  offset: 150  length: 73
  ├── index  offset: 228  length: 45
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 278  length: 69
- ├── properties  offset: 352  length: 463
- ├── meta-index  offset: 820  length: 88
- └── footer  offset: 913  length: 57
+ ├── properties  offset: 352  length: 484
+ ├── meta-index  offset: 841  length: 88
+ └── footer  offset: 934  length: 57

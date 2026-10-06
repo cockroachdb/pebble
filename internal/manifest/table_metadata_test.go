@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"runtime"
 	"strings"
 	"testing"
@@ -221,4 +222,21 @@ func TestTableBackingCopyPropertiesFrom(t *testing.T) {
 	props2, ok := b2.Properties()
 	require.True(t, ok)
 	require.Equal(t, *props, *props2)
+}
+
+func TestTableBackingMaxUserKeySize(t *testing.T) {
+	for _, tc := range []struct {
+		prop     uint64
+		expected uint32
+	}{
+		{prop: 0, expected: 0},
+		{prop: 7, expected: 7},
+		{prop: math.MaxUint32, expected: math.MaxUint32},
+		{prop: 1<<32 + 5, expected: math.MaxUint32},
+		{prop: math.MaxUint64, expected: math.MaxUint32},
+	} {
+		var b TableBacking
+		props := b.PopulateProperties(&sstable.Properties{MaxUserKeySize: tc.prop})
+		require.Equal(t, tc.expected, props.MaxUserKeySize, "prop=%d", tc.prop)
+	}
 }
