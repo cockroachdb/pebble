@@ -303,7 +303,7 @@ obsolete-key: hex:00
 
 copy-span bloom-sst bloom-sst-copy b.SET.10 cc.SET.0 filter=my-custom-filter/bloom(10)
 ----
-copied 977 bytes
+copied 990 bytes
 
 describe bloom-sst-copy
 ----
@@ -313,6 +313,6 @@ sstable
  ├── data  offset: 172  length: 73
  ├── index  offset: 250  length: 45
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 300  length: 69
- ├── properties  offset: 374  length: 448
- ├── meta-index  offset: 827  length: 88
- └── footer  offset: 920  length: 57
+ ├── properties  offset: 374  length: 461
+ ├── meta-index  offset: 840  length: 88
+ └── footer  offset: 933  length: 57

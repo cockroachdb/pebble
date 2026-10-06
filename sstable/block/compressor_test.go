@@ -6,6 +6,7 @@ package block
 
 import (
 	"math/rand/v2"
+	"slices"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/compression"
@@ -74,4 +75,79 @@ func TestCompressorMinReductionStats(t *testing.T) {
 	require.Equal(t, NoCompressionIndicator, ci)
 	require.Equal(t, src, out)
 	require.Equal(t, "None:1024", compressor.Stats().String())
+}
+
+// TestCompressorCopiedBlock verifies that CopiedBlock derives the same stats as
+// those recorded when the blocks were compressed.
+func TestCompressorCopiedBlock(t *testing.T) {
+	rng := rand.New(rand.NewPCG(0, 1))
+	incompressible := make([]byte, 4096)
+	for i := range incompressible {
+		incompressible[i] = byte(rng.Uint32())
+	}
+	compressible := make([]byte, 4096)
+	for i := range compressible {
+		compressible[i] = byte(i % 7)
+	}
+	// makeBlocks returns the physical blocks (with trailers) produced by the
+	// given profile, along with the compression stats of the compressor.
+	makeBlocks := func(profile *CompressionProfile) ([][]byte, *CompressionStats) {
+		var maker PhysicalBlockMaker
+		maker.Init(profile, ChecksumTypeCRC32c)
+		defer maker.Close()
+		var blocks [][]byte
+		for _, data := range [][]byte{compressible, incompressible, compressible[:100]} {
+			pb := maker.Make(data, blockkind.SSTableData, NoFlags)
+			blocks = append(blocks, slices.Clone(pb.tb.Data()))
+			pb.Release()
+		}
+		stats := maker.Compressor.Stats().Clone()
+		return blocks, &stats
+	}
+	copiedStats := func(blocks [][]byte, sourceStats *CompressionStats) string {
+		c := MakeCompressor(NoCompression)
+		defer c.Close()
+		for _, b := range blocks {
+			require.NoError(t, c.CopiedBlock(b, sourceStats))
+		}
+		return c.Stats().String()
+	}
+	// zeroLevels returns the stats with the levels removed.
+	zeroLevels := func(stats *CompressionStats) string {
+		var res CompressionStats
+		for s, cs := range stats.All() {
+			res.addOne(compression.Setting{Algorithm: s.Algorithm}, cs)
+		}
+		return res.String()
+	}
+
+	for _, profile := range []*CompressionProfile{
+		NoCompression, SnappyCompression, MinLZCompression, ZstdCompression,
+	} {
+		t.Run(profile.Name, func(t *testing.T) {
+			blocks, stats := makeBlocks(profile)
+			// With the source's stats, the levels are inferred.
+			require.Equal(t, stats.String(), copiedStats(blocks, stats))
+			// Without them, the levels are unknown.
+			require.Equal(t, zeroLevels(stats), copiedStats(blocks, nil))
+		})
+	}
+
+	t.Run("ambiguous-level", func(t *testing.T) {
+		blocks, _ := makeBlocks(ZstdCompression)
+		var sourceStats CompressionStats
+		sourceStats.addOne(compression.ZstdLevel1, CompressionStatsForSetting{CompressedBytes: 1, UncompressedBytes: 2})
+		sourceStats.addOne(compression.ZstdLevel3, CompressionStatsForSetting{CompressedBytes: 1, UncompressedBytes: 2})
+		require.Contains(t, copiedStats(blocks, &sourceStats), "ZSTD:")
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		c := MakeCompressor(NoCompression)
+		defer c.Close()
+		require.Error(t, c.CopiedBlock(make([]byte, TrailerLen-1), nil))
+		b := make([]byte, 10+TrailerLen)
+		b[10] = byte(ZlibCompressionIndicator)
+		require.Error(t, c.CopiedBlock(b, nil))
+		require.True(t, c.Stats().IsEmpty())
+	})
 }
