@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -273,6 +274,233 @@ func BenchmarkRewriteSST(b *testing.B) {
 							}
 						})
 					}
+				})
+			}
+		})
+	}
+}
+
+// TestRewriteSuffixesMaxUserKeySize tests the MaxUserKeySize property of tables
+// produced by suffix rewriting. The block-based rewriter derives the property
+// from the original table's property (resulting in an upper bound), whereas
+// RewriteKeySuffixesViaWriter recomputes it exactly.
+func TestRewriteSuffixesMaxUserKeySize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name string
+		// points are the point keys, without suffix; each point key gets the
+		// `from` suffix.
+		points []string
+		// rangeKeys are the bounds of the range keys; each range key is a
+		// RANGEKEYSET with the `from` suffix.
+		rangeKeys [][2]string
+		from, to  string
+		// sourceLacksProp simulates a source table written by a Pebble version
+		// that did not record the property.
+		sourceLacksProp bool
+		// expectedInBlocks is the expected property of the table produced by
+		// RewriteKeySuffixesAndReturnFormat (0 means absent).
+		expectedInBlocks uint64
+		// expectedExact is the actual size of the largest key after rewriting;
+		// this is also the expected property of the table produced by
+		// RewriteKeySuffixesViaWriter.
+		expectedExact uint64
+	}{
+		{
+			name:             "same-suffix-length",
+			points:           []string{"a", "bbbbbbbb", "c"},
+			from:             "@1",
+			to:               "@2",
+			expectedInBlocks: 10,
+			expectedExact:    10,
+		},
+		{
+			name:             "longer-suffix",
+			points:           []string{"a", "bbbbbbbb", "c"},
+			from:             "@1",
+			to:               "@12345",
+			expectedInBlocks: 14,
+			expectedExact:    14,
+		},
+		{
+			name:             "shorter-suffix",
+			points:           []string{"a", "bbbbbbbb", "c"},
+			from:             "@12345",
+			to:               "@1",
+			expectedInBlocks: 10,
+			expectedExact:    10,
+		},
+		{
+			name:             "point-max-with-range-keys",
+			points:           []string{"a", "bbbbbbbbbbbb"},
+			rangeKeys:        [][2]string{{"c", "dddd"}},
+			from:             "@1",
+			to:               "@123",
+			expectedInBlocks: 16,
+			expectedExact:    16,
+		},
+		{
+			// The original maximum comes from a range key bound, which is not
+			// affected by the rewrite; the block-based rewriter can't tell, so
+			// it produces an upper bound.
+			name:             "range-key-max-longer-suffix",
+			points:           []string{"a"},
+			rangeKeys:        [][2]string{{"cccccccccc", "d"}},
+			from:             "@1",
+			to:               "@1234",
+			expectedInBlocks: 13,
+			expectedExact:    10,
+		},
+		{
+			name:             "range-key-max-shorter-suffix",
+			points:           []string{"a"},
+			rangeKeys:        [][2]string{{"c", "dddddddddd"}},
+			from:             "@1234",
+			to:               "@1",
+			expectedInBlocks: 10,
+			expectedExact:    10,
+		},
+		{
+			// The range keys are re-encoded, so the property is exact.
+			name:             "range-keys-only",
+			rangeKeys:        [][2]string{{"a", "b"}, {"c", "dddddd"}},
+			from:             "@1",
+			to:               "@123",
+			expectedInBlocks: 6,
+			expectedExact:    6,
+		},
+		{
+			// The range keys are re-encoded, so the property is exact even if the
+			// source table has a longer bound.
+			name:             "range-keys-only-shorter-suffix",
+			rangeKeys:        [][2]string{{"a", "b"}},
+			from:             "@12345",
+			to:               "@1",
+			expectedInBlocks: 1,
+			expectedExact:    1,
+		},
+		{
+			// The range keys are re-encoded, so the property is computed even if
+			// the source table lacked it.
+			name:             "range-keys-only-source-lacks-prop",
+			rangeKeys:        [][2]string{{"a", "b"}, {"c", "dddddd"}},
+			from:             "@1",
+			to:               "@123",
+			sourceLacksProp:  true,
+			expectedInBlocks: 6,
+			expectedExact:    6,
+		},
+		{
+			name:             "points-source-lacks-prop",
+			points:           []string{"a", "bbbbbbbb", "c"},
+			from:             "@1",
+			to:               "@123",
+			sourceLacksProp:  true,
+			expectedInBlocks: 0,
+			expectedExact:    12,
+		},
+		{
+			// The point keys are copied at the block level, so if the source
+			// lacks the property, the output must lack it too, even though the
+			// range keys are re-encoded.
+			name:             "points-and-range-keys-source-lacks-prop",
+			points:           []string{"a"},
+			rangeKeys:        [][2]string{{"cccccccccc", "d"}},
+			from:             "@1",
+			to:               "@123",
+			sourceLacksProp:  true,
+			expectedInBlocks: 0,
+			expectedExact:    10,
+		},
+	}
+
+	readerOpts := ReaderOptions{
+		Comparer:   testkeys.Comparer,
+		KeySchemas: KeySchemas{testkeysSchema.Name: &testkeysSchema},
+	}
+	// checkOutput verifies the property of the rewritten table.
+	checkOutput := func(
+		t *testing.T, meta *WriterMetadata, sst []byte, expected, expectedExact uint64,
+	) {
+		t.Helper()
+		r, err := NewMemReader(sst, readerOpts)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, r.Close()) }()
+		// Sanity check expectedExact against the table contents.
+		require.Equal(t, expectedExact, maxUserKeySizeFromContents(t, r))
+		got, present := readMaxUserKeySizeProp(t, r)
+		require.Equal(t, got, meta.Properties.MaxUserKeySize)
+		require.Equal(t, expected, got)
+		require.Equal(t, expected != 0, present)
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			minFormat := TableFormatPebblev1
+			if len(tc.rangeKeys) > 0 {
+				minFormat = TableFormatPebblev2
+			}
+			for tf := minFormat; tf <= TableFormatMax; tf++ {
+				t.Run(tf.String(), func(t *testing.T) {
+					wOpts := WriterOptions{
+						Comparer:    testkeys.Comparer,
+						KeySchema:   &testkeysSchema,
+						TableFormat: tf,
+						// Use small blocks to get multiple data blocks.
+						BlockSize:      1,
+						IndexBlockSize: 1,
+					}
+					// Build the source table.
+					obj := &objstorage.MemObj{}
+					w := NewRawWriter(obj, wOpts)
+					for _, p := range tc.points {
+						k := base.MakeInternalKey([]byte(p+tc.from), 1, InternalKeyKindSet)
+						require.NoError(t, w.Add(k, []byte("val"), false /* forceObsolete */))
+					}
+					for _, rk := range tc.rangeKeys {
+						require.NoError(t, w.EncodeSpan(keyspan.Span{
+							Start: []byte(rk[0]),
+							End:   []byte(rk[1]),
+							Keys: []keyspan.Key{{
+								Trailer: base.MakeTrailer(1, base.InternalKeyKindRangeKeySet),
+								Suffix:  []byte(tc.from),
+								Value:   []byte("val"),
+							}},
+						}))
+					}
+					if tc.sourceLacksProp {
+						clearMaxUserKeySize(t, w)
+					}
+					require.NoError(t, w.Close())
+					sst := obj.Data()
+
+					r, err := NewMemReader(sst, readerOpts)
+					require.NoError(t, err)
+					defer func() { require.NoError(t, r.Close()) }()
+					srcProp, srcPresent := readMaxUserKeySizeProp(t, r)
+					require.Equal(t, !tc.sourceLacksProp, srcPresent)
+					if srcPresent {
+						require.Equal(t, maxUserKeySizeFromContents(t, r), srcProp)
+					}
+
+					from, to := []byte(tc.from), []byte(tc.to)
+					for _, concurrency := range []int{1, 3} {
+						t.Run(fmt.Sprintf("in-blocks/concurrency=%d", concurrency), func(t *testing.T) {
+							out := &objstorage.MemObj{}
+							meta, format, err := RewriteKeySuffixesAndReturnFormat(
+								sst, readerOpts, out, wOpts, from, to, concurrency)
+							require.NoError(t, err)
+							require.Equal(t, tf, format)
+							checkOutput(t, meta, out.Data(), tc.expectedInBlocks, tc.expectedExact)
+						})
+					}
+					t.Run("via-writer", func(t *testing.T) {
+						out := &objstorage.MemObj{}
+						meta, err := RewriteKeySuffixesViaWriter(r, out, wOpts, from, to)
+						require.NoError(t, err)
+						checkOutput(t, meta, out.Data(), tc.expectedExact, tc.expectedExact)
+					})
 				})
 			}
 		})

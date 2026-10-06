@@ -17,7 +17,7 @@ d#0,SET: foobar
 
 copy-span test1 test2 b.SET.10 cc.SET.0
 ----
-copied 661 bytes
+copied 689 bytes
 
 iter test2
 ----
@@ -27,7 +27,7 @@ d#0,SET: foobar
 
 copy-span test1 test21 a.SET.10 bb.SET.0
 ----
-copied 658 bytes
+copied 686 bytes
 
 iter test21
 ----
@@ -65,7 +65,7 @@ j#0,SET: foo
 
 copy-span test22 test23 b.SET.10 cc.SET.0
 ----
-copied 661 bytes
+copied 689 bytes
 
 iter test23
 ----
@@ -75,7 +75,7 @@ d#0,SET: foobar
 
 copy-span test22 test24 a.SET.10 bb.SET.0
 ----
-copied 658 bytes
+copied 686 bytes
 
 iter test24
 ----
@@ -99,7 +99,7 @@ d#0,SET: foobar
 
 copy-span test3 test4 b.SET.10 cc.SET.0
 ----
-copied 889 bytes
+copied 910 bytes
 
 iter test4
 ----
@@ -109,7 +109,7 @@ d#0,SET: foobar
 
 copy-span test3 test5 a.SET.10 bb.SET.0
 ----
-copied 897 bytes
+copied 918 bytes
 
 iter test5
 ----
@@ -139,7 +139,7 @@ d#0,SET: foobar
 
 copy-span test32 test33 b.SET.10 cc.SET.0
 ----
-copied 889 bytes
+copied 910 bytes
 
 iter test33
 ----
@@ -149,7 +149,7 @@ d#0,SET: foobar
 
 copy-span test32 test34 a.SET.10 bb.SET.0
 ----
-copied 897 bytes
+copied 918 bytes
 
 iter test34
 ----
@@ -173,7 +173,7 @@ d#0,SET: foobar
 
 copy-span test3 test4 b.SET.10 cc.SET.0
 ----
-copied 906 bytes
+copied 927 bytes
 
 iter test4
 ----
@@ -183,7 +183,7 @@ d#0,SET: foobar
 
 copy-span test3 test5 a.SET.10 bb.SET.0
 ----
-copied 914 bytes
+copied 935 bytes
 
 iter test5
 ----
@@ -213,7 +213,7 @@ d#0,SET: foobar
 
 copy-span test32 test33 b.SET.10 cc.SET.0
 ----
-copied 906 bytes
+copied 927 bytes
 
 iter test33
 ----
@@ -223,7 +223,7 @@ d#0,SET: foobar
 
 copy-span test32 test34 a.SET.10 bb.SET.0
 ----
-copied 914 bytes
+copied 935 bytes
 
 iter test34
 ----

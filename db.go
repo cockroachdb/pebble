@@ -2088,6 +2088,9 @@ func (d *DB) Metrics() *Metrics {
 	// TODO(jackson): Consider making these metrics optional.
 	metrics.Keys.RangeKeySetsCount = *rangeKeySetsAnnotator.MultiLevelAnnotation(vers.RangeKeyLevels[:])
 	metrics.Keys.TombstoneCount = *tombstonesAnnotator.MultiLevelAnnotation(vers.Levels[:])
+	maxUserKeySize := maxUserKeySizeAnnotator.MultiLevelAnnotation(vers.Levels[:])
+	metrics.Keys.MaxUserKeySize = maxUserKeySize.MaxUserKeySize
+	metrics.Keys.MaxUserKeySizeUnknownTables = maxUserKeySize.UnknownTables
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())

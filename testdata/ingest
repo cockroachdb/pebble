@@ -40,8 +40,8 @@ level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | ta
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |     1   569B     0B       0 |    - 0.00 0.00 |    0B |     1   569B |     0     0B |     0     0B |    0B |   1    0
-total |     1   569B     0B       0 |    -    -    - |  569B |     1   569B |     0     0B |     0   569B |    0B |   1 1.00
+    6 |     1   597B     0B       0 |    - 0.00 0.00 |    0B |     1   597B |     0     0B |     0     0B |    0B |   1    0
+total |     1   597B     0B       0 |    -    -    - |  597B |     1   597B |     0     0B |     0   597B |    0B |   1 1.00
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 0
@@ -51,12 +51,12 @@ MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 569B
+Local tables size: 597B
 Compression types: snappy: 1
 Table stats: all loaded
 Block cache: 3 entries (1.1KB)  hit rate: 18.2%
-Table cache: 1 entries (832B)  hit rate: 50.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
+Table cache: 1 entries (840B)  hit rate: 50.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0  Max key size: 1B
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -360,7 +360,7 @@ num-entries: 2
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1316
+range-deletions-bytes-estimate: 1365
 
 # A set operation takes precedence over a range deletion at the same
 # sequence number as can occur during ingestion.
