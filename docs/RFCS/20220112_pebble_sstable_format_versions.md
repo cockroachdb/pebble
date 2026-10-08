@@ -222,7 +222,7 @@ table format version".
 For example:
 
 ```go
-// Existing verisons.
+// Existing versions.
 FormatDefault.MaxTableFormat()                       // sstable.TableFormatRocksDBv2
 ...
 FormatSetWithDelete.MaxTableFormat()                 // sstable.TableFormatRocksDBv2
@@ -281,7 +281,7 @@ for runtime incompatibilities.
 
 To guard against the window of incompatibility, _two_ cluster versions are
 employed when bumping Pebble format major versions that correspond to new
-SSTable level features. The first cluster verison is uesd to synchronize all
+SSTable level features. The first cluster version is used to synchronize all
 stores at the same Pebble format major version (and therefore table format
 version). The second cluster version is used as a feature gate that enables
 Cockroach nodes to make use of the newer table format, relying on the guarantee

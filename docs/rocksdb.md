@@ -196,7 +196,7 @@ list of fixed size chunks, with no upper limit set for the number of
 chunks that can be associated with an arena. So RocksDB handles large
 batches by allowing a memtable to grow beyond its configured
 size. Concretely, while RocksDB may be configured with a 64MB memtable
-size, a 1GB batch will cause the memtable to grow to accomodate
+size, a 1GB batch will cause the memtable to grow to accommodate
 it. Functionally, this is good, though there is a practical problem: a
 large batch is first written to the WAL, and then added to the
 memtable. Adding the large batch to the memtable may consume so much

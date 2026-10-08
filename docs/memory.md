@@ -88,5 +88,5 @@ There also exists a very specific memory reclamation use case in the block cache
 that ensures that structs with transitively reachable fields backed by manually
 allocated memory that are pooled in a `sync.Pool` are freed correctly when their
 parent struct is released from the pool and consequently garbage collected by
-the Go runtime (see `cache/entry_normal.go`). The loose guarantees provided by
+the Go runtime (see `internal/cache/entry.go`). The loose guarantees provided by
 the runtime are reasonable to rely on in this case to prevent a memory leak.
