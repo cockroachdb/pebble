@@ -208,7 +208,7 @@ both at the currently-positioned `Key`.
 Described another way, a Pebble combined iterator guarantees that it
 will stop at all positions within the keyspace where:
 1. There exists a point key at that position.
-2. There exists a range key that logically begins at that postition.
+2. There exists a range key that logically begins at that position.
 
 In addition to the above positions, a Pebble iterator may also stop at keys
 in-between the above positions due to fragmentation. Range keys are defined over
@@ -379,7 +379,7 @@ type RangeKeyMasking struct {
 	//
 	// To use this functionality, the caller must create and configure (through
 	// Options.BlockPropertyCollectors) a block-property collector that records
-	// the maxmimum suffix contained within a block. The caller then must write
+	// the maximum suffix contained within a block. The caller then must write
 	// and provide a BlockPropertyFilterMask implementation on that same
 	// property. See the BlockPropertyFilterMask type for more information.
 	Filter func() BlockPropertyFilterMask
@@ -553,7 +553,7 @@ range-key masking uses suffixes to impose order, not sequence numbers.
 
 ### Boundaries for sstables
 
-Range keys follow the same relationship to sstable bounadries as the existing
+Range keys follow the same relationship to sstable boundaries as the existing
 `RANGEDEL` tombstones. The bounds of an internal range key are user keys. Every
 range key is limited by its containing sstable's bounds.
 
@@ -883,7 +883,7 @@ keys in the same sstable in different blocks ("shared sstables") or separate
 sstables forming a parallel LSM ("separate sstables"):
 
 - Storing range keys in separate sstables is possible because the only
-  iteractions between range keys and point keys happens at a global level.
+  interactions between range keys and point keys happens at a global level.
   Masking is defined over suffixes. It may be extended to be defined over
   sequence numbers too (see 'Sequence numbers' section below), but that is
   optional. Unlike range deletion tombstones, range keys have no effect on point
