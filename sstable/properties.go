@@ -160,6 +160,17 @@ type Properties struct {
 	// The name of the key schema used in this table. Empty for formats <=
 	// TableFormatPebblev4.
 	KeySchemaName string `prop:"pebble.colblk.schema"`
+	// MaxUserKeySize is the size in bytes of the largest user key in the table,
+	// considering point keys as well as the start and end keys of range
+	// deletions and range keys. For tables produced by suffix rewriting or
+	// span copying, it is an upper bound.
+	//
+	// The property is only serialized if > 0, so 0 means the size is unknown:
+	// the table was written by a Pebble version that did not record this
+	// property, or it was derived from such a table (or, in the degenerate case,
+	// all its keys are empty). It is never serialized for table formats older
+	// than TableFormatPebblev1 (for byte-for-byte RocksDB compatibility).
+	MaxUserKeySize uint64 `prop:"pebble.max.user-key.size"`
 	// The name of the merger used in this table. Empty if no merger is used.
 	MergerName string `prop:"rocksdb.merge.operator"`
 	// The number of merge operands in the table.
@@ -415,6 +426,11 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) error {
 	}
 	if p.KeySchemaName != "" {
 		p.saveString(m, unsafe.Offsetof(p.KeySchemaName), p.KeySchemaName)
+	}
+	// NB: Like RawPointTombstoneKeySize below, this property is only written out
+	// for Pebble formats.
+	if p.MaxUserKeySize > 0 && tblFormat >= TableFormatPebblev1 {
+		p.saveUvarint(m, unsafe.Offsetof(p.MaxUserKeySize), p.MaxUserKeySize)
 	}
 	if p.MergerName != "" {
 		p.saveString(m, unsafe.Offsetof(p.MergerName), p.MergerName)

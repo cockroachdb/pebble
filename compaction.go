@@ -2667,8 +2667,12 @@ func (d *DB) runCopyCompaction(
 
 		// NB: external files are always virtual.
 		var wrote uint64
+		var maxUserKeySize uint64
 		err = d.fileCache.withVirtualReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r sstable.VirtualReader, _ block.ReadEnv) error {
 			var err error
+			// CopySpan copies the properties of the backing table (including
+			// MaxUserKeySize) to the new table.
+			maxUserKeySize = r.UnsafeReader().Properties.MaxUserKeySize
 			// TODO(radu): plumb a ReadEnv to CopySpan (it could use the buffer pool
 			// or update category stats).
 			wrote, err = sstable.CopySpan(ctx,
@@ -2694,6 +2698,7 @@ func (d *DB) runCopyCompaction(
 		}
 		newMeta.FileBacking.Size = wrote
 		newMeta.Size = wrote
+		newMeta.FileBacking.PopulateMaxUserKeySize(maxUserKeySize)
 	} else {
 		_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
 			d.objProvider.Path(objMeta), base.FileTypeTable, newMeta.FileBacking.DiskFileNum,
@@ -2702,6 +2707,8 @@ func (d *DB) runCopyCompaction(
 			return nil, compact.Stats{}, err
 		}
 		deleteOnExit = true
+		// The new table is identical to the input table.
+		newMeta.FileBacking.PopulateMaxUserKeySize(inputMeta.FileBacking.MaxUserKeySize())
 	}
 	ve.NewTables = []newTableEntry{{
 		Level: c.outputLevel.level,

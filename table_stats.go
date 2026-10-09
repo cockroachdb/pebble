@@ -319,6 +319,17 @@ func (d *DB) loadTableStats(
 			if props.NumDataBlocks > 0 {
 				stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
 			}
+			// The CommonProperties of a virtual table are scaled and don't include
+			// MaxUserKeySize; the value applies to the backing table (and is
+			// shared by all the virtual tables that use it).
+			switch r := r.(type) {
+			case *sstable.Reader:
+				meta.FileBacking.PopulateMaxUserKeySize(r.Properties.MaxUserKeySize)
+			case *sstable.VirtualReader:
+				meta.FileBacking.PopulateMaxUserKeySize(r.UnsafeReader().Properties.MaxUserKeySize)
+			default:
+				return errors.AssertionFailedf("unexpected reader type %T", r)
+			}
 
 			if props.NumPointDeletions() > 0 {
 				if err = d.loadTablePointKeyStats(props, v, level, meta, &stats); err != nil {
@@ -676,6 +687,10 @@ func sanityCheckStats(meta *tableMetadata, logger Logger, info string) {
 }
 
 func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties, logger Logger) bool {
+	// The size of the largest user key is populated even if the stats are not
+	// (see below); the table is not yet visible to other goroutines.
+	meta.FileBacking.PopulateMaxUserKeySize(props.MaxUserKeySize)
+
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
 	//
@@ -1053,6 +1068,63 @@ var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) 
 var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
 	return f.Stats.ValueBlocksSize, f.StatsValid()
 })
+
+// maxUserKeySizeAnnotator is a manifest.Annotator that annotates B-tree nodes
+// with the maximum of the files' (upper bounds of) MaxUserKeySize, along with
+// the number of files for which it is not known. The value is kept in the
+// files' backings (see manifest.FileBacking.MaxUserKeySize); it is cacheable
+// once known, or if the file's stats have been loaded (which also populates the
+// value if the property exists).
+var maxUserKeySizeAnnotator = manifest.Annotator[maxUserKeySizeAnnotation]{
+	Aggregator: maxUserKeySizeAggregator{},
+}
+
+type maxUserKeySizeAnnotation struct {
+	// MaxUserKeySize is the maximum of the tables' (upper bounds of)
+	// Properties.MaxUserKeySize, among tables for which it is known.
+	MaxUserKeySize uint64
+	// UnknownTables is the number of tables for which
+	// Properties.MaxUserKeySize is not known.
+	UnknownTables uint64
+}
+
+type maxUserKeySizeAggregator struct{}
+
+func (a maxUserKeySizeAggregator) Zero(dst *maxUserKeySizeAnnotation) *maxUserKeySizeAnnotation {
+	if dst == nil {
+		return new(maxUserKeySizeAnnotation)
+	}
+	*dst = maxUserKeySizeAnnotation{}
+	return dst
+}
+
+func (a maxUserKeySizeAggregator) Accumulate(
+	f *tableMetadata, dst *maxUserKeySizeAnnotation,
+) (v *maxUserKeySizeAnnotation, cacheOK bool) {
+	if size := f.FileBacking.MaxUserKeySize(); size != 0 {
+		// Keys of tables with a synthetic prefix and/or suffix are transformed
+		// when read. The prefix is prepended to every key and the suffix replaces
+		// any existing suffix, so the resulting keys are at most this much longer.
+		size += uint64(f.SyntheticPrefixAndSuffix.PrefixLen()) +
+			uint64(f.SyntheticPrefixAndSuffix.SuffixLen())
+		dst.MaxUserKeySize = max(dst.MaxUserKeySize, size)
+		// The value does not change once known.
+		return dst, true
+	}
+	dst.UnknownTables++
+	// Loading the table's stats populates the value, unless the table does not
+	// have the property. The stats are marked valid after the value is
+	// populated.
+	return dst, f.StatsValid()
+}
+
+func (a maxUserKeySizeAggregator) Merge(
+	src *maxUserKeySizeAnnotation, dst *maxUserKeySizeAnnotation,
+) *maxUserKeySizeAnnotation {
+	dst.MaxUserKeySize = max(dst.MaxUserKeySize, src.MaxUserKeySize)
+	dst.UnknownTables += src.UnknownTables
+	return dst
+}
 
 // compressionTypeAnnotator is a manifest.Annotator that annotates B-tree
 // nodes with the compression type of the file. Its annotation type is

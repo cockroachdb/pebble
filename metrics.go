@@ -263,6 +263,24 @@ type Metrics struct {
 		// A cumulative total number of missized DELSIZED keys encountered by
 		// compactions since the database was opened.
 		MissizedTombstonesCount uint64
+		// MaxUserKeySize is the size in bytes of the largest user key in the
+		// LSM's sstables, considering point keys as well as range deletion and
+		// range key bounds; keys in memtables (including flushable ingests) are
+		// not reflected. It is derived from the tables' properties and only
+		// reflects tables for which the property is known (see
+		// MaxUserKeySizeUnknownTables).
+		//
+		// It can be an overestimate: virtual tables use the value of their
+		// backing table; tables produced by suffix rewriting or span copying
+		// record an upper bound; and the lengths of synthetic prefixes and
+		// suffixes are added.
+		MaxUserKeySize uint64
+		// MaxUserKeySizeUnknownTables is the number of tables (including virtual
+		// tables) not reflected in MaxUserKeySize, either because their
+		// properties are not loaded (stats collection is in progress or
+		// disabled), or because they were written by a Pebble version that did
+		// not record the largest key size (or derived from such a table).
+		MaxUserKeySizeUnknownTables uint64
 	}
 
 	Snapshots struct {
@@ -691,11 +709,16 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		formatSharedCacheMetrics(w, &m.SecondaryCacheMetrics, "Secondary cache")
 	}
 
-	w.Printf("Range key sets: %s  Tombstones: %s  Total missized tombstones encountered: %s\n",
+	w.Printf("Range key sets: %s  Tombstones: %s  Total missized tombstones encountered: %s  Max key size: %s",
 		humanize.Count.Uint64(m.Keys.RangeKeySetsCount),
 		humanize.Count.Uint64(m.Keys.TombstoneCount),
 		humanize.Count.Uint64(m.Keys.MissizedTombstonesCount),
+		humanize.Bytes.Uint64(m.Keys.MaxUserKeySize),
 	)
+	if m.Keys.MaxUserKeySizeUnknownTables > 0 {
+		w.Printf(" (%s unknown)", humanize.Count.Uint64(m.Keys.MaxUserKeySizeUnknownTables))
+	}
+	w.Printf("\n")
 
 	w.Printf("Snapshots: %d  earliest seq num: %d\n",
 		redact.Safe(m.Snapshots.Count),
