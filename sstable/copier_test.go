@@ -7,6 +7,7 @@ package sstable
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -23,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCopySpan(t *testing.T) {
@@ -35,8 +38,8 @@ func TestCopySpan(t *testing.T) {
 	nextFileNum := base.FileNum(1)
 	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
 
-	getReader := func(d *datadriven.TestData) (*Reader, error) {
-		f, err := fs.Open(d.CmdArgs[0].Key)
+	getReader := func(name string) (*Reader, error) {
+		f, err := fs.Open(name)
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +53,7 @@ func TestCopySpan(t *testing.T) {
 			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
 					CacheHandle: cacheHandle,
-					FileNum:     base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
+					FileNum:     base.DiskFileNum(fileNameToNum[name]),
 				},
 			},
 			Comparer:   testkeys.Comparer,
@@ -106,7 +109,7 @@ func TestCopySpan(t *testing.T) {
 				}
 			}
 
-			r, err := getReader(d)
+			r, err := getReader(d.CmdArgs[0].Key)
 			if err != nil {
 				return err.Error()
 			}
@@ -148,7 +151,7 @@ func TestCopySpan(t *testing.T) {
 			fileNameToNum[outputFile] = nextFileNum
 			nextFileNum++
 
-			r, err := getReader(d)
+			r, err := getReader(d.CmdArgs[0].Key)
 			if err != nil {
 				return err.Error()
 			}
@@ -163,14 +166,23 @@ func TestCopySpan(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			size, err := CopySpan(context.TODO(), readable2, r, 0 /* level */, writable, wOpts, start, end)
+			size, props, err := CopySpan(context.TODO(), readable2, r, 0 /* level */, writable, wOpts, start, end)
 			if err != nil {
 				return err.Error()
 			}
+			// The returned properties must match those of the output sstable.
+			outR, err := getReader(outputFile)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, outR.Close()) }()
+			outProps, err := outR.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+			require.NoError(t, err)
+			// Loaded only affects String().
+			outProps.Loaded, props.Loaded = 0, 0
+			require.Equal(t, outProps.String(), props.String())
 			return fmt.Sprintf("copied %d bytes", size)
 
 		case "describe":
-			r, err := getReader(d)
+			r, err := getReader(d.CmdArgs[0].Key)
 			if err != nil {
 				return err.Error()
 			}
@@ -182,7 +194,7 @@ func TestCopySpan(t *testing.T) {
 			return l.Describe(false /* verbose */, r, nil)
 
 		case "props":
-			r, err := getReader(d)
+			r, err := getReader(d.CmdArgs[0].Key)
 			if err != nil {
 				return err.Error()
 			}
@@ -198,4 +210,197 @@ func TestCopySpan(t *testing.T) {
 			return ""
 		}
 	})
+}
+
+// TestCopySpanCompressionStats verifies that the compression stats of a table
+// produced by CopySpan account for all its blocks, regardless of whether the
+// data blocks were copied verbatim (block cache misses) or recompressed (block
+// cache hits).
+func TestCopySpanCompressionStats(t *testing.T) {
+	ctx := context.Background()
+	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
+	key := func(i int) []byte { return fmt.Appendf(nil, "key%05d", i) }
+	const numKeys = 1000
+
+	for _, profile := range []*block.CompressionProfile{
+		block.SnappyCompression, block.MinLZCompression, block.ZstdCompression,
+	} {
+		t.Run(profile.Name, func(t *testing.T) {
+			// Use the same compression for the source and the copy, so that
+			// recompressing a block reproduces the original block.
+			wOpts := WriterOptions{
+				Comparer:    testkeys.Comparer,
+				KeySchema:   &keySchema,
+				TableFormat: TableFormatMax,
+				BlockSize:   512,
+				Compression: profile,
+			}
+			src := &objstorage.MemObj{}
+			w := NewWriter(src, wOpts)
+			rng := rand.New(rand.NewPCG(0, 1))
+			value := make([]byte, 100)
+			for i := range numKeys {
+				// Alternate between runs of compressible and incompressible values,
+				// so that some blocks are stored uncompressed.
+				for j := range value {
+					if (i/50)%2 == 0 {
+						value[j] = byte(rng.Uint32())
+					} else {
+						value[j] = byte(j % 4)
+					}
+				}
+				require.NoError(t, w.Set(key(i), value))
+			}
+			require.NoError(t, w.Close())
+
+			// copySpan populates a fresh block cache by reading the keys in
+			// [warmStart, warmEnd), then copies a span of the source table and
+			// returns the compression stats of the result.
+			copySpan := func(warmStart, warmEnd int) string {
+				c := cache.New(16 << 20)
+				defer c.Unref()
+				h := c.NewHandle()
+				defer h.Close()
+				rOpts := ReaderOptions{
+					ReaderOptions: block.ReaderOptions{
+						CacheOpts: sstableinternal.CacheOptions{CacheHandle: h, FileNum: 1},
+					},
+					Comparer:   testkeys.Comparer,
+					KeySchemas: KeySchemas{keySchema.Name: &keySchema},
+				}
+				r, err := NewReader(ctx, src, rOpts)
+				require.NoError(t, err)
+				defer func() { require.NoError(t, r.Close()) }()
+				if warmStart < warmEnd {
+					iter, err := r.NewIter(blockiter.NoTransforms, key(warmStart), key(warmEnd), AssertNoBlobHandles)
+					require.NoError(t, err)
+					for kv := iter.First(); kv != nil; kv = iter.Next() {
+					}
+					require.NoError(t, iter.Close())
+				}
+				out := &objstorage.MemObj{}
+				_, _, err = CopySpan(ctx, src, r, 0 /* level */, out, wOpts,
+					base.MakeInternalKey(key(200), base.SeqNumMax, base.InternalKeyKindSet),
+					base.MakeInternalKey(key(800), 0, base.InternalKeyKindSet))
+				require.NoError(t, err)
+
+				outR, err := NewMemReader(out.Data(), rOpts)
+				require.NoError(t, err)
+				defer func() { require.NoError(t, outR.Close()) }()
+				props, err := outR.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+				require.NoError(t, err)
+				return props.CompressionStats
+			}
+
+			warm := copySpan(0, numKeys)
+			// The data blocks dominate the stats; make sure the expected settings
+			// are present.
+			require.Contains(t, warm, "None:")
+			require.Contains(t, warm, profile.DataBlocks.Setting.String()+":")
+			require.Equal(t, warm, copySpan(0, 0), "cold cache")
+			require.Equal(t, warm, copySpan(400, 600), "partially warm cache")
+		})
+	}
+}
+
+// TestCopySpanMaxUserKeySize verifies that a table produced by CopySpan carries
+// over the MaxUserKeySize property of the source table (which is an upper
+// bound for the copied keys), and that the output lacks the property if the
+// source lacks it.
+func TestCopySpanMaxUserKeySize(t *testing.T) {
+	blockCache := cache.New(1 << 20 /* 1 MB */)
+	defer blockCache.Unref()
+	cacheHandle := blockCache.NewHandle()
+	defer cacheHandle.Close()
+	nextFileNum := base.DiskFileNum(1)
+
+	longKey := strings.Repeat("b", 20) + "@1"
+	readerOpts := ReaderOptions{
+		Comparer:   testkeys.Comparer,
+		KeySchemas: KeySchemas{testkeysSchema.Name: &testkeysSchema},
+	}
+	testCases := []struct {
+		name string
+		// rangeDel adds a range deletion to the source table, which causes
+		// CopySpan to copy the entire file.
+		rangeDel bool
+		// sourceLacksProp simulates a source table written by a Pebble version
+		// that did not record the property.
+		sourceLacksProp bool
+	}{
+		{name: "copy-blocks"},
+		{name: "copy-blocks-source-lacks-prop", sourceLacksProp: true},
+		{name: "copy-whole-file", rangeDel: true},
+		{name: "copy-whole-file-source-lacks-prop", rangeDel: true, sourceLacksProp: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			for tf := TableFormatPebblev1; tf <= TableFormatMax; tf++ {
+				t.Run(tf.String(), func(t *testing.T) {
+					obj := &objstorage.MemObj{}
+					w := NewRawWriter(obj, WriterOptions{
+						BlockSize:      1,
+						IndexBlockSize: 1,
+						TableFormat:    tf,
+						Comparer:       testkeys.Comparer,
+						KeySchema:      &testkeysSchema,
+					})
+					for _, k := range []string{"a@1", longKey, "c@1", "d@1", "e@1"} {
+						require.NoError(t, w.Add(
+							base.MakeInternalKey([]byte(k), 1, base.InternalKeyKindSet), []byte("val"),
+							false /* forceObsolete */, base.KVMeta{}))
+					}
+					if tc.rangeDel {
+						require.NoError(t, w.EncodeSpan(keyspan.Span{
+							Start: []byte("x"),
+							End:   []byte("y"),
+							Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeDelete)}},
+						}))
+					}
+					if tc.sourceLacksProp {
+						clearMaxUserKeySize(t, w)
+					}
+					require.NoError(t, w.Close())
+
+					rOpts := readerOpts
+					rOpts.CacheOpts = sstableinternal.CacheOptions{
+						CacheHandle: cacheHandle,
+						FileNum:     nextFileNum,
+					}
+					nextFileNum++
+					r, err := NewMemReader(obj.Data(), rOpts)
+					require.NoError(t, err)
+					defer func() { require.NoError(t, r.Close()) }()
+					srcProp, srcPresent := readMaxUserKeySizeProp(t, r)
+					require.Equal(t, !tc.sourceLacksProp, srcPresent)
+					if srcPresent {
+						require.Equal(t, uint64(len(longKey)), srcProp)
+					}
+
+					output := &objstorage.MemObj{}
+					_, outProps, err := CopySpan(context.Background(), newMemReader(obj.Data()), r, 0, /* level */
+						output, WriterOptions{Comparer: testkeys.Comparer, KeySchema: &testkeysSchema},
+						base.MakeInternalKey([]byte("c@1"), base.SeqNumMax, base.InternalKeyKindMax),
+						base.MakeInternalKey([]byte("d@1"), 0, base.InternalKeyKindSet))
+					require.NoError(t, err)
+
+					outReader, err := NewMemReader(output.Data(), readerOpts)
+					require.NoError(t, err)
+					defer func() { require.NoError(t, outReader.Close()) }()
+					if !tc.rangeDel {
+						// The output does not contain the longest key, so the
+						// property is a strict upper bound.
+						require.Less(t, maxUserKeySizeFromContents(t, outReader), uint64(len(longKey)))
+					} else {
+						require.Equal(t, obj.Data(), output.Data())
+					}
+					got, present := readMaxUserKeySizeProp(t, outReader)
+					require.Equal(t, srcPresent, present)
+					require.Equal(t, srcProp, got)
+					// The returned properties match the written ones.
+					require.Equal(t, got, outProps.MaxUserKeySize)
+				})
+			}
+		})
+	}
 }

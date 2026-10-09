@@ -11,7 +11,7 @@ seqnums:  [#1-#1]
 virtualize lower=b#1,SET upper=c#1,SET show-size
 ----
 bounds:  [b#1,SET-c#1,SET]
-size: 50 B / backing size: 595 B
+size: 50 B / backing size: 616 B
 
 # Repeat the above with (Pebble,v5).
 
@@ -27,7 +27,7 @@ seqnums:  [#1-#1]
 virtualize lower=b#1,SET upper=c#1,SET show-size
 ----
 bounds:  [b#1,SET-c#1,SET]
-size: 87 B / backing size: 755 B
+size: 87 B / backing size: 776 B
 
 
 # Test 2: Similar to test 1 but force two level iterators.
@@ -43,7 +43,7 @@ seqnums:  [#1-#1]
 virtualize lower=b#1,SET upper=c#1,SET show-size
 ----
 bounds:  [b#1,SET-c#1,SET]
-size: 54 B / backing size: 878 B
+size: 54 B / backing size: 899 B
 
 # Test the constrain bounds function. It performs some subtle shrinking and
 # expanding of bounds. The current virtual sstable bounds are [b,c].
@@ -112,7 +112,7 @@ seqnums:  [#1-#1]
 virtualize lower=b#1,SET upper=c#1,SET show-size
 ----
 bounds:  [b#1,SET-c#1,SET]
-size: 158 B / backing size: 1.2 KiB
+size: 158 B / backing size: 1.3 KiB
 
 # Test the constrain bounds function. It performs some subtle shrinking and
 # expanding of bounds. The current virtual sstable bounds are [b,c].
@@ -227,7 +227,7 @@ seqnums:  [#1-#9]
 virtualize lower=dd#5,SET upper=ddd#6,SET show-size
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
-size: 97 B / backing size: 643 B
+size: 97 B / backing size: 664 B
 
 # Repeat the above with (Pebble,v5).
 
@@ -247,7 +247,7 @@ seqnums:  [#1-#9]
 virtualize lower=dd#5,SET upper=ddd#6,SET show-size
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
-size: 107 B / backing size: 776 B
+size: 107 B / backing size: 797 B
 
 build
 a#1,DEL:
@@ -263,7 +263,7 @@ seqnums:  [#1-#1]
 virtualize lower=a#1,DEL upper=a0#1,SET show-size
 ----
 bounds:  [a#1,DEL-a0#1,SET]
-size: 108 B / backing size: 859 B
+size: 108 B / backing size: 885 B
 
 # Test virtual sstable with a synthetic prefix.
 build
@@ -278,4 +278,4 @@ seqnums:  [#1-#1]
 virtualize lower=poi-b#1,SET upper=poi-c#1,SET prefix=poi- show-size
 ----
 bounds:  [poi-b#1,SET-poi-c#1,SET]
-size: 102 B / backing size: 734 B
+size: 102 B / backing size: 755 B

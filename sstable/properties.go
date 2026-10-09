@@ -129,6 +129,17 @@ type Properties struct {
 	// separating MVCC garbage, which are recognized by the key suffix. Note that this
 	// value corresponds only for blob file writing and not value blocks.
 	ValueSeparationBySuffixDisabled bool `prop:"pebble.value-separation.by-suffix.disabled"`
+	// MaxUserKeySize is the size in bytes of the largest user key in the table,
+	// considering point keys as well as the start and end keys of range
+	// deletions and range keys. For tables produced by suffix rewriting or
+	// span copying, it is an upper bound.
+	//
+	// The property is only serialized if > 0, so 0 means the size is unknown:
+	// the table was written by a Pebble version that did not record this
+	// property, or it was derived from such a table (or, in the degenerate case,
+	// all its keys are empty). It is never serialized for table formats older
+	// than TableFormatPebblev1 (for byte-for-byte RocksDB compatibility).
+	MaxUserKeySize uint64 `prop:"pebble.max.user-key.size"`
 	// User collected properties. Currently, we only use them to store block
 	// properties aggregated at the table level.
 	UserProperties map[string]string
@@ -161,6 +172,7 @@ func (p *Properties) accumulateProps(tblFormat TableFormat) map[string][]byte {
 		// properties, however writing them prevents byte-for-byte equivalence with
 		// RocksDB files that some of our testing requires.
 		delete(m, "pebble.raw.point-tombstone.key.size")
+		delete(m, "pebble.max.user-key.size")
 
 		m["rocksdb.column.family.id"] = maxInt32Slice
 		m["rocksdb.fixed.key.length"] = singleZeroSlice

@@ -42,6 +42,10 @@ type RawColumnWriter struct {
 	blockPropsEncoder   blockPropertiesEncoder
 	obsoleteCollector   obsoleteKeyBlockPropertyCollector
 	props               Properties
+	// copySourceCompressionStats are the compression stats of the table from
+	// which data blocks are copied verbatim (see copyProperties and
+	// copyDataBlocks).
+	copySourceCompressionStats block.CompressionStats
 	// block writers buffering unflushed data.
 	dataBlock struct {
 		colblk.DataBlockEncoder
@@ -300,6 +304,7 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 		// writer because this writer does not flatten them into row key-value
 		// pairs.
 		w.props.RawKeySize += uint64(len(span.Start) + len(span.End))
+		w.props.MaxUserKeySize = max(w.props.MaxUserKeySize, uint64(len(span.Start)), uint64(len(span.End)))
 		count := uint64(len(span.Keys))
 		w.props.NumEntries += count
 		w.props.NumDeletions += count
@@ -310,6 +315,7 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 		// writer because this writer does not flatten them into row key-value
 		// pairs.
 		w.props.RawRangeKeyKeySize += uint64(len(span.Start) + len(span.End))
+		w.props.MaxUserKeySize = max(w.props.MaxUserKeySize, uint64(len(span.Start)), uint64(len(span.End)))
 		for _, k := range span.Keys {
 			w.props.RawRangeKeyValueSize += uint64(len(k.Value))
 			switch k.Kind() {
@@ -665,6 +671,7 @@ func (w *RawColumnWriter) internalAdd(
 	}
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(valueLen)
+	w.props.MaxUserKeySize = max(w.props.MaxUserKeySize, uint64(len(key.UserKey)))
 	return nil
 }
 
@@ -1265,11 +1272,11 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		}
 	}
 
+	props, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+	if err != nil {
+		return errors.Wrap(err, "reading properties block")
+	}
 	if len(blocks) > 0 {
-		props, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
-		if err != nil {
-			return errors.Wrap(err, "reading properties block")
-		}
 		w.meta.updateSeqNum(blocks[0].start.SeqNum())
 		w.props.NumEntries = props.NumEntries
 		w.props.RawKeySize = props.RawKeySize
@@ -1282,6 +1289,9 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
 		return errors.Wrap(err, "rewriting range key blocks")
 	}
+	// The range keys were added through EncodeSpan, which accounted for their
+	// bounds in w.props.MaxUserKeySize.
+	w.props.MaxUserKeySize = rewrittenMaxUserKeySize(&props, w.props.MaxUserKeySize, from, to)
 	// Copy over the filter block if it exists.
 	if family, filterBH, ok := getExistingFilter(l); ok {
 		filterBlock, _, err := readBlockBuf(sstBytes, filterBH, r.blockReader.ChecksumType(), nil)
@@ -1355,6 +1365,11 @@ func (w *RawColumnWriter) copyDataBlocks(
 		for i := firstBlockIdx; i <= lastBlockIdx; i++ {
 			offsetDiff := blocks[i].bh.Offset - blocks[firstBlockIdx].bh.Offset
 			dataWithTrailer := buf[offsetDiff : offsetDiff+blocks[i].bh.Length+block.TrailerLen]
+			// The block bypasses the compressor; account for it in the
+			// compression stats that we write out.
+			if err := w.layout.physBlockMaker.Compressor.CopiedBlock(dataWithTrailer, &w.copySourceCompressionStats); err != nil {
+				return err
+			}
 			pb := block.AlreadyEncodedPhysicalBlock(dataWithTrailer)
 			if err := w.enqueuePhysicalBlock(pb.Take(), blocks[i].sep); err != nil {
 				return err
@@ -1422,6 +1437,11 @@ func (w *RawColumnWriter) copyProperties(props Properties) {
 	w.props.TopLevelIndexSize = 0
 	w.props.IndexSize = 0
 	w.props.IndexType = 0
+	// The compression stats are re-derived from the blocks we write (see
+	// copyDataBlocks); the source's stats are only used to infer the
+	// compression levels of copied blocks. If they can't be parsed, the levels
+	// are left unset.
+	w.copySourceCompressionStats, _ = block.ParseCompressionStats(props.CompressionStats)
 }
 
 // SetValueSeparationProps implements RawWriter.

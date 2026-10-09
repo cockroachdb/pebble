@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"runtime"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/stretchr/testify/require"
 )
 
@@ -202,5 +204,39 @@ func TestTableMetadataSize(t *testing.T) {
 	if structSize := unsafe.Sizeof(TableBacking{}); structSize != tableBackingSize {
 		t.Errorf("TableBacking struct size (%d bytes) is not expected size (%d bytes)",
 			structSize, tableBackingSize)
+	}
+}
+
+func TestTableBackingCopyPropertiesFrom(t *testing.T) {
+	var b TableBacking
+	props := b.PopulateProperties(&sstable.Properties{
+		NumEntries:       10,
+		NumDeletions:     3,
+		RawKeySize:       100,
+		CompressionStats: "None:10,Snappy:20/30",
+	})
+	var b2 TableBacking
+	_, ok := b2.Properties()
+	require.False(t, ok)
+	b2.CopyPropertiesFrom(props)
+	props2, ok := b2.Properties()
+	require.True(t, ok)
+	require.Equal(t, *props, *props2)
+}
+
+func TestTableBackingMaxUserKeySize(t *testing.T) {
+	for _, tc := range []struct {
+		prop     uint64
+		expected uint32
+	}{
+		{prop: 0, expected: 0},
+		{prop: 7, expected: 7},
+		{prop: math.MaxUint32, expected: math.MaxUint32},
+		{prop: 1<<32 + 5, expected: math.MaxUint32},
+		{prop: math.MaxUint64, expected: math.MaxUint32},
+	} {
+		var b TableBacking
+		props := b.PopulateProperties(&sstable.Properties{MaxUserKeySize: tc.prop})
+		require.Equal(t, tc.expected, props.MaxUserKeySize, "prop=%d", tc.prop)
 	}
 }

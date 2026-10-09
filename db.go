@@ -2046,6 +2046,8 @@ func (d *DB) Metrics() *Metrics {
 	aggProps := tablePropsAnnotator.MultiLevelAnnotation(vers.Levels[:])
 	metrics.Keys.RangeKeySetsCount = aggProps.NumRangeKeySets
 	metrics.Keys.TombstoneCount = aggProps.NumDeletions
+	metrics.Keys.MaxUserKeySize = aggProps.MaxUserKeySize
+	metrics.Keys.MaxUserKeySizeUnknownTables = aggProps.MaxUserKeySizeUnknownTables
 
 	delBytes := deletionBytesAnnotator.MultiLevelAnnotation(vers.Levels[:])
 	metrics.Table.Garbage.PointDeletionsBytesEstimate = delBytes.PointDels

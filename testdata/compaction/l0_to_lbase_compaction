@@ -38,10 +38,10 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |  160KB |      0    0B |   0  1.47
+   L0         0B |      0    0B |      0     0 |     0B     0B |  160KB |      0    0B |   0  1.48
    L6      236KB |      4 236KB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      236KB |      4 236KB |      0     0 |     0B     0B |  160KB |      0    0B |   1  2.47
+total      236KB |      4 236KB |      0     0 |     0B     0B |  160KB |      0    0B |   1  2.48
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
@@ -104,9 +104,9 @@ COMPACTIONS
            0B |        0 (0B) |     0 (0B) |        0 |                0 |         0B |         0B
 
 KEYS
-      range keys |       tombstones |      missized tombstones |      point dels |      range dels
------------------+------------------+--------------------------+-----------------+----------------
-               0 |                0 |                        0 |              0B |              0B
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels |           max key size
+-----------------+------------------+--------------------------+-----------------+-----------------+-----------------------
+               0 |                0 |                        0 |              0B |              0B |                     5B
 
 COMPRESSION
     algorithm |        tables |    blob files

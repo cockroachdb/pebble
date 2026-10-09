@@ -814,6 +814,7 @@ func (w *RawRowWriter) addPoint(key InternalKey, value []byte, forceObsolete boo
 	}
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
+	w.props.MaxUserKeySize = max(w.props.MaxUserKeySize, uint64(len(key.UserKey)))
 	return nil
 }
 
@@ -879,6 +880,8 @@ func (w *RawRowWriter) addTombstone(key InternalKey, value []byte) error {
 	w.props.NumRangeDeletions++
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
+	// The value of a range deletion is its end key.
+	w.props.MaxUserKeySize = max(w.props.MaxUserKeySize, uint64(len(key.UserKey)), uint64(len(value)))
 	return w.rangeDelBlock.Add(key, value)
 }
 
@@ -1435,6 +1438,7 @@ func (w *RawRowWriter) EncodeSpan(span keyspan.Span) error {
 			return err
 		}
 	}
+	w.props.MaxUserKeySize = max(w.props.MaxUserKeySize, uint64(len(span.Start)), uint64(len(span.End)))
 	return w.rangeKeyEncoder.Encode(span)
 }
 
@@ -1868,12 +1872,11 @@ func (w *RawRowWriter) rewriteSuffixes(
 			return err
 		}
 	}
+	props, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+	if err != nil {
+		return errors.Wrap(err, "reading properties block")
+	}
 	if len(blocks) > 0 {
-		props, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
-		if err != nil {
-			return errors.Wrap(err, "reading properties block")
-		}
-
 		w.meta.Size = w.layout.offset
 		w.meta.updateSeqNum(blocks[0].start.SeqNum())
 		w.props.NumEntries = props.NumEntries
@@ -1887,6 +1890,9 @@ func (w *RawRowWriter) rewriteSuffixes(
 	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
 		return errors.Wrap(err, "rewriting range key blocks")
 	}
+	// The range keys were added through EncodeSpan, which accounted for their
+	// bounds in w.props.MaxUserKeySize.
+	w.props.MaxUserKeySize = rewrittenMaxUserKeySize(&props, w.props.MaxUserKeySize, from, to)
 	// Copy over the filter block if it exists.
 	if family, filterBH, ok := getExistingFilter(l); ok {
 		filterBlock, _, err := readBlockBuf(sst, filterBH, r.blockReader.ChecksumType(), nil)

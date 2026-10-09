@@ -8,6 +8,8 @@ import (
 	"iter"
 	"math/rand"
 
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
@@ -87,7 +89,7 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 	//      before
 	if setting.Algorithm != compression.NoAlgorithm &&
 		int64(len(out))*100 > int64(len(src))*int64(100-c.minReductionPercent) {
-		setting.Algorithm = compression.NoAlgorithm
+		setting = compression.NoCompression
 		out = append(out[:0], src...)
 	}
 	c.stats.addOne(setting, CompressionStatsForSetting{
@@ -105,6 +107,49 @@ func (c *Compressor) UncompressedBlock(size int, kind Kind) {
 		UncompressedBytes: uint64(size),
 		CompressedBytes:   uint64(size),
 	})
+}
+
+// CopiedBlock informs the compressor that a block that was already encoded
+// (e.g. copied verbatim from another sstable) was written, so that the final
+// statistics are complete. blockWithTrailer is the physical block, including
+// its trailer.
+//
+// The compression algorithm and the decompressed size are determined from the
+// block itself. The compression level cannot be; it is taken from sourceStats
+// (the statistics of the table the block was copied from, if available) when
+// they contain a single setting for the block's algorithm, and is otherwise
+// left unset.
+func (c *Compressor) CopiedBlock(blockWithTrailer []byte, sourceStats *CompressionStats) error {
+	if len(blockWithTrailer) < TrailerLen {
+		return base.CorruptionErrorf("pebble: invalid block of length %d", errors.Safe(len(blockWithTrailer)))
+	}
+	data := blockWithTrailer[:len(blockWithTrailer)-TrailerLen]
+	indicator := CompressionIndicator(blockWithTrailer[len(data)])
+	switch indicator {
+	case NoCompressionIndicator, SnappyCompressionIndicator, ZstdCompressionIndicator, MinLZCompressionIndicator:
+	default:
+		return base.CorruptionErrorf("pebble: unsupported block compression indicator %d", errors.Safe(byte(indicator)))
+	}
+	algo := indicator.Algorithm()
+	decompressedLen := len(data)
+	if algo != compression.NoAlgorithm {
+		d := compression.GetDecompressor(algo)
+		var err error
+		decompressedLen, err = d.DecompressedLen(data)
+		d.Close()
+		if err != nil {
+			return err
+		}
+	}
+	setting := compression.Setting{Algorithm: algo}
+	if s, ok := sourceStats.uniqueSetting(algo); ok {
+		setting = s
+	}
+	c.stats.addOne(setting, CompressionStatsForSetting{
+		UncompressedBytes: uint64(decompressedLen),
+		CompressedBytes:   uint64(len(data)),
+	})
+	return nil
 }
 
 // Stats returns the compression stats. The result can only be used until the
