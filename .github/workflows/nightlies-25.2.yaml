@@ -8,6 +8,9 @@ on:
 env:
   BRANCH: crl-release-25.2
 
+permissions:
+  contents: read
+
 jobs:
   resolve-sha:
     runs-on: ubuntu-latest
