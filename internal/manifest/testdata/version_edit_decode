@@ -139,3 +139,30 @@ decode
 67031d000b626172000e0000000000000b666f6f010d0000000000000000
 45010129d8a30101
   add-table:     L3 000029:[bar#14,DEL-foo#13,SET] seqnums:[#0-#0] points:[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952); depth:1]
+
+decode
+0a                           # <tagExciseBoundsRecord>
+80808080808080808001         # start-key len = 1<<63; no key bytes follow
+----
+err: pebble: corrupt manifest: failed to read 9223372036854775808 bytes
+
+decode
+0a                           # <tagExciseBoundsRecord>
+8080808008                   # start-key len = 1<<31; no key bytes follow
+----
+err: pebble: corrupt manifest: failed to read 2147483648 bytes
+
+decode
+67                           # <tagNewFile4>
+00                           #   . Level           = L0
+01                           #   . FileNum         = 000001
+00                           #   . FileSize        = 0
+00                           #   . Smallest        = empty
+00                           #   . Largest         = empty
+00                           #   . Smallest Seqnum = 0
+00                           #   . Largest Seqnum  = 0
+45                           #   . <customTagBlobReferences>
+01                           #   . depth           = 1
+80808080808080808001         #   . count           = 1<<63; no references follow
+----
+err: pebble: corrupt manifest: failed to read uvarint
