@@ -345,6 +345,22 @@ type Manager interface {
 
 	// List returns the virtual WALs in ascending order. List must not perform
 	// I/O.
+	//
+	// The returned WALs can be read while the current Writer keeps appending to
+	// the last one. Of the segment file it appends records to, a Reader reads
+	// only the whole records the Writer has written to the file by the time the
+	// Reader gets to them, so that the bytes it reads do not change while it
+	// reads them. That includes every record whose sync completed before List
+	// was called, but a record written without a sync may be left out until the
+	// Writer next flushes (see record.LogWriter.FlushedOffset). The segment
+	// therefore ends cleanly exactly where those records end, and an invalid
+	// record in it, or an end of it before theirs, is reported as corruption.
+	//
+	// Every other segment file is read whole. One that is still being written,
+	// by a Writer that was switched away from, is not the last segment of its
+	// WAL, so a Reader takes an invalid tail in it for the end of the segment; a
+	// record whose sync completed before List was called lies before that tail
+	// or in a later segment.
 	List() Logs
 	// Obsolete informs the manager that all virtual WALs less than
 	// minUnflushedNum are obsolete. The callee can choose to recycle some
