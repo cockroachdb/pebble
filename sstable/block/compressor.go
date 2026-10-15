@@ -87,7 +87,10 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 	//      before
 	if setting.Algorithm != compression.NoAlgorithm &&
 		int64(len(out))*100 > int64(len(src))*int64(100-c.minReductionPercent) {
-		setting.Algorithm = compression.NoAlgorithm
+		// Reset the whole setting, not just the algorithm: the level that was
+		// attempted is not part of how the block is stored, and a setting like
+		// {NoAlgorithm, 1} is not a setting we can name.
+		setting = compression.NoCompression
 		out = append(out[:0], src...)
 	}
 	c.stats.addOne(setting, CompressionStatsForSetting{
