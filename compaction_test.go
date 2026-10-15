@@ -2583,9 +2583,13 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 func TestFlushError(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	// Error the first five times we try to write a sstable.
+	// Error the first three times we try to write a sstable.
 	var errorOps atomic.Int32
 	errorOps.Store(3)
+	var errorTimes struct {
+		sync.Mutex
+		times []time.Time
+	}
 	fs := errorfs.Wrap(vfs.NewMem(), errorfs.InjectorFunc(func(op errorfs.Op) error {
 		if op.Kind == errorfs.OpCreate && filepath.Ext(op.Path) == ".sst" && errorOps.Add(-1) >= 0 {
 			return errorfs.ErrInjected
@@ -2596,6 +2600,9 @@ func TestFlushError(t *testing.T) {
 		FS: fs,
 		EventListener: &EventListener{
 			BackgroundError: func(err error) {
+				errorTimes.Lock()
+				errorTimes.times = append(errorTimes.times, time.Now())
+				errorTimes.Unlock()
 				t.Log(err)
 			},
 		},
@@ -2606,7 +2613,89 @@ func TestFlushError(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("a"), []byte("foo"), NoSync))
 	require.NoError(t, d.Flush())
+	flushDoneAt := time.Now()
+
+	errorTimes.Lock()
+	times := append([]time.Time(nil), errorTimes.times...)
+	errorTimes.Unlock()
+	require.Len(t, times, 3)
+	require.GreaterOrEqual(t, times[1].Sub(times[0]), flushRetryInitialBackoff)
+	require.GreaterOrEqual(t, times[2].Sub(times[1]), 2*flushRetryInitialBackoff)
+	require.GreaterOrEqual(t, flushDoneAt.Sub(times[2]), 4*flushRetryInitialBackoff)
+
+	d.mu.Lock()
+	require.Zero(t, d.mu.compact.flushRetryBackoff)
+	require.False(t, d.mu.compact.flushRetrying)
+	d.mu.Unlock()
 	require.NoError(t, d.Close())
+}
+
+func TestFlushRetryBackoff(t *testing.T) {
+	backoff := time.Duration(0)
+	for _, expected := range []time.Duration{
+		flushRetryInitialBackoff,
+		2 * flushRetryInitialBackoff,
+		4 * flushRetryInitialBackoff,
+		8 * flushRetryInitialBackoff,
+		16 * flushRetryInitialBackoff,
+		32 * flushRetryInitialBackoff,
+		flushRetryMaxBackoff,
+		flushRetryMaxBackoff,
+	} {
+		backoff = nextFlushRetryBackoff(backoff)
+		require.Equal(t, expected, backoff)
+	}
+}
+
+func TestFlushRetryCancelledOnClose(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	backgroundErr := make(chan struct{}, 1)
+	fs := errorfs.Wrap(vfs.NewMem(), errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if op.Kind == errorfs.OpCreate && filepath.Ext(op.Path) == ".sst" {
+			return errorfs.ErrInjected
+		}
+		return nil
+	}))
+	opts := &Options{
+		FS: fs,
+		EventListener: &EventListener{
+			BackgroundError: func(error) {
+				select {
+				case backgroundErr <- struct{}{}:
+				default:
+				}
+			},
+		},
+		Logger: testutils.Logger{T: t},
+	}
+	opts.WithFSDefaults()
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			_ = d.Close()
+		}
+	}()
+
+	require.NoError(t, d.Set([]byte("a"), []byte("foo"), NoSync))
+	d.mu.Lock()
+	d.mu.compact.flushRetryBackoff = flushRetryMaxBackoff / 2
+	d.mu.Unlock()
+	_, err = d.AsyncFlush()
+	require.NoError(t, err)
+
+	select {
+	case <-backgroundErr:
+	case <-time.After(10 * time.Second):
+		t.Fatal("flush did not report its background error")
+	}
+
+	closeStart := time.Now()
+	closeErr := d.Close()
+	d = nil
+	require.NoError(t, closeErr)
+	require.Less(t, time.Since(closeStart), flushRetryMaxBackoff/2)
 }
 
 func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
