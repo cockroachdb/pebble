@@ -164,6 +164,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		closedCh:            make(chan struct{}),
 		bgCtx:               ctx,
 		bgCtxCancel:         cancel,
+		// The stats must exist before the first call to d.newMemTable.
+		rangeDelCacheStats: newKeySpanCacheStats(),
 	}
 	d.mu.versions = &versionSet{}
 	d.diskAvailBytes.Store(math.MaxUint64)

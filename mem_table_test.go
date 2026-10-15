@@ -11,6 +11,7 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode"
@@ -22,7 +23,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
+	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/prometheus/client_golang/prometheus"
+	prometheusgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -375,6 +380,355 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 	}
 }
 
+// histogramSamples returns the number of samples recorded by h and their sum.
+func histogramSamples(t testing.TB, h prometheus.Histogram) (count uint64, sum float64) {
+	t.Helper()
+	require.NotNil(t, h)
+	var m prometheusgo.Metric
+	require.NoError(t, h.Write(&m))
+	return m.GetHistogram().GetSampleCount(), m.GetHistogram().GetSampleSum()
+}
+
+// rangeDelCacheSamples summarizes the sample counts and sums of the
+// histograms in MemTableRangeDelCacheMetrics.
+type rangeDelCacheSamples struct {
+	invalidations uint64
+	// rebuilds is the sample count of RebuildDuration. The count of every
+	// histogram other than ReaderWait must equal it.
+	rebuilds       uint64
+	readerWaits    uint64
+	tombstonesSum  float64
+	fragmentsSum   float64
+	concurrencySum float64
+}
+
+func readRangeDelCacheSamples(t testing.TB, m MemTableRangeDelCacheMetrics) rangeDelCacheSamples {
+	t.Helper()
+	s := rangeDelCacheSamples{invalidations: m.Invalidations}
+	s.rebuilds, _ = histogramSamples(t, m.RebuildDuration)
+	s.readerWaits, _ = histogramSamples(t, m.ReaderWait)
+	var n uint64
+	n, s.tombstonesSum = histogramSamples(t, m.RebuildTombstones)
+	require.Equal(t, s.rebuilds, n)
+	n, s.fragmentsSum = histogramSamples(t, m.RebuildFragments)
+	require.Equal(t, s.rebuilds, n)
+	n, s.concurrencySum = histogramSamples(t, m.ConcurrentRebuilds)
+	require.Equal(t, s.rebuilds, n)
+	return s
+}
+
+func TestMemTableRangeDelCacheStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	stats := newKeySpanCacheStats()
+	m := newMemTable(memTableOptions{rangeDelCacheStats: stats})
+
+	seqNum := base.SeqNum(1)
+	apply := func(fn func(b *Batch)) {
+		t.Helper()
+		b := newBatch(nil)
+		defer b.Close()
+		fn(b)
+		require.NoError(t, m.apply(b, seqNum))
+		seqNum += base.SeqNum(b.Count())
+	}
+	// read creates a range deletion iterator and returns the number of
+	// fragments it contains.
+	read := func() (fragments int) {
+		t.Helper()
+		it := m.newRangeDelIter(nil)
+		require.NotNil(t, it)
+		defer it.Close()
+		for s, err := it.First(); s != nil; s, err = it.Next() {
+			require.NoError(t, err)
+			fragments++
+		}
+		return fragments
+	}
+	samples := func() rangeDelCacheSamples {
+		t.Helper()
+		return readRangeDelCacheSamples(t, stats.metrics())
+	}
+
+	// Nothing has been recorded before any range deletion is applied, and
+	// there is no cache to build.
+	require.Equal(t, rangeDelCacheSamples{}, samples())
+	require.Nil(t, m.newRangeDelIter(nil))
+	require.Equal(t, rangeDelCacheSamples{}, samples())
+
+	// Applying a range deletion invalidates the cache but does not build it.
+	apply(func(b *Batch) { require.NoError(t, b.DeleteRange([]byte("a"), []byte("c"), nil)) })
+	require.Equal(t, rangeDelCacheSamples{invalidations: 1}, samples())
+
+	// The first read builds the cache.
+	require.Equal(t, 1, read())
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 1, rebuilds: 1, tombstonesSum: 1, fragmentsSum: 1, concurrencySum: 1,
+	}, samples())
+
+	// Reads of the built cache record nothing.
+	for i := 0; i < 3; i++ {
+		require.Equal(t, 1, read())
+	}
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 1, rebuilds: 1, tombstonesSum: 1, fragmentsSum: 1, concurrencySum: 1,
+	}, samples())
+
+	// Batches without range deletions leave the cache and the stats alone.
+	apply(func(b *Batch) { require.NoError(t, b.Set([]byte("a"), []byte("v"), nil)) })
+	apply(func(b *Batch) {
+		require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, []byte("v"), nil))
+	})
+	require.NotNil(t, m.newRangeKeyIter(nil))
+	require.Equal(t, 1, read())
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 1, rebuilds: 1, tombstonesSum: 1, fragmentsSum: 1, concurrencySum: 1,
+	}, samples())
+
+	// A batch with two range deletions invalidates once, and the rebuild sees
+	// all three tombstones: [a,c), [b,d), [c,e) fragment into [a,b), [b,c),
+	// [c,d), [d,e).
+	apply(func(b *Batch) {
+		require.NoError(t, b.DeleteRange([]byte("b"), []byte("d"), nil))
+		require.NoError(t, b.DeleteRange([]byte("c"), []byte("e"), nil))
+	})
+	require.Equal(t, uint64(2), samples().invalidations)
+	require.Equal(t, 4, read())
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 2, rebuilds: 2, tombstonesSum: 1 + 3, fragmentsSum: 1 + 4, concurrencySum: 2,
+	}, samples())
+
+	// Several invalidations between reads are absorbed by a single rebuild.
+	apply(func(b *Batch) { require.NoError(t, b.DeleteRange([]byte("e"), []byte("f"), nil)) })
+	apply(func(b *Batch) { require.NoError(t, b.DeleteRange([]byte("f"), []byte("g"), nil)) })
+	require.Equal(t, uint64(4), samples().invalidations)
+	require.Equal(t, 6, read())
+	require.Equal(t, 6, read())
+	require.Equal(t, rangeDelCacheSamples{
+		invalidations: 4, rebuilds: 3, tombstonesSum: 1 + 3 + 5, fragmentsSum: 1 + 4 + 6,
+		concurrencySum: 3,
+	}, samples())
+
+	// Nothing above waited on another goroutine's rebuild.
+	require.Equal(t, uint64(0), samples().readerWaits)
+}
+
+// TestMemTableRangeDelCacheStatsNil checks that a memtable without stats
+// invalidates and rebuilds its cache.
+func TestMemTableRangeDelCacheStatsNil(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	m := newMemTable(memTableOptions{})
+	b := newBatch(nil)
+	defer b.Close()
+	require.NoError(t, b.DeleteRange([]byte("a"), []byte("c"), nil))
+	require.NoError(t, m.apply(b, 1))
+	it := m.newRangeDelIter(nil)
+	require.NotNil(t, it)
+	s, err := it.First()
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	it.Close()
+	require.Equal(t, MemTableRangeDelCacheMetrics{}, (*keySpanCacheStats)(nil).metrics())
+}
+
+// TestMemTableRangeDelCacheConcurrentRebuilds blocks rebuilds of two
+// keySpanFrags in the middle of their build to observe rebuilds in flight, and
+// races readers against a rebuild.
+func TestMemTableRangeDelCacheConcurrentRebuilds(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	stats := newKeySpanCacheStats()
+	m := newMemTable(memTableOptions{rangeDelCacheStats: stats})
+	b := newBatch(nil)
+	defer b.Close()
+	require.NoError(t, b.DeleteRange([]byte("a"), []byte("c"), nil))
+	require.NoError(t, m.apply(b, 1))
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	blockingConstructSpan := func(
+		ik base.InternalKey, v []byte, keysDst []keyspan.Key,
+	) (keyspan.Span, error) {
+		started <- struct{}{}
+		<-release
+		return rangeDelConstructSpan(ik, v, keysDst)
+	}
+	get := func(f *keySpanFrags) []keyspan.Span {
+		return f.get(&m.rangeDelSkl, m.cmp, m.formatKey, blockingConstructSpan, false /* onlyFragmentOverlappingSpans */, stats)
+	}
+
+	// Start a rebuild of first and wait for it to block inside the build. Then
+	// start a rebuild of a second keySpanFrags: it observes the first one in
+	// flight. Readers of first race with its rebuild.
+	first, second := &keySpanFrags{count: 1}, &keySpanFrags{count: 1}
+	const readers = 8
+	var wg sync.WaitGroup
+	spans := make([][]keyspan.Span, readers+2)
+	wg.Add(1)
+	go func() { defer wg.Done(); spans[0] = get(first) }()
+	<-started
+	wg.Add(1)
+	go func() { defer wg.Done(); spans[1] = get(second) }()
+	<-started
+	for i := 0; i < readers; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); spans[2+i] = get(first) }()
+	}
+	close(release)
+	wg.Wait()
+
+	for i := range spans {
+		require.Len(t, spans[i], 1)
+	}
+	s := readRangeDelCacheSamples(t, stats.metrics())
+	require.Equal(t, uint64(2), s.rebuilds)
+	// The first rebuild saw itself in flight; the second saw both.
+	require.Equal(t, float64(1+2), s.concurrencySum)
+	require.Equal(t, float64(2), s.tombstonesSum)
+	require.Equal(t, float64(2), s.fragmentsSum)
+	// Each reader either waited for the rebuild or found it already built.
+	require.LessOrEqual(t, s.readerWaits, uint64(readers))
+	require.Equal(t, int64(0), stats.rebuildsInFlight.Load())
+	require.True(t, first.built.Load())
+	require.True(t, second.built.Load())
+
+	// Reads of a built keySpanFrags record nothing further.
+	require.Len(t, get(first), 1)
+	require.Equal(t, s, readRangeDelCacheSamples(t, stats.metrics()))
+}
+
+// referenceRangeDelFragments is a copy of how keySpanFrags.get rebuilt range
+// deletions before disjoint tombstones bypassed the Fragmenter: every
+// tombstone in skl goes through a single keyspan.Fragmenter.
+func referenceRangeDelFragments(
+	skl *arenaskl.Skiplist, cmp Compare, formatKey base.FormatKey,
+) []keyspan.Span {
+	var spans []keyspan.Span
+	frag := &keyspan.Fragmenter{
+		Cmp:    cmp,
+		Format: formatKey,
+		Emit: func(fragmented keyspan.Span) {
+			spans = append(spans, fragmented)
+		},
+	}
+	it := skl.NewIter(base.DefaultSplit, nil, nil)
+	var keysDst []keyspan.Key
+	for kv := it.First(); kv != nil; kv = it.Next() {
+		s := rangedel.Decode(kv.K, kv.InPlaceValue(), keysDst)
+		frag.Add(s)
+		keysDst = s.Keys[len(s.Keys):]
+	}
+	frag.Finish()
+	return spans
+}
+
+// TestMemTableRangeDelFragmentsMatchReference checks that the memtable's
+// fragmented range deletions match referenceRangeDelFragments over random
+// tombstone sets.
+func TestMemTableRangeDelFragmentsMatchReference(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(seed, seed))
+
+	// Keys are single letters so that shared and touching bounds are common.
+	const maxPos = 14
+	key := func(pos int) []byte { return []byte{byte('a' + pos)} }
+	// between returns a random position in [lo, hi], or lo if hi < lo.
+	between := func(lo, hi int) int {
+		if hi <= lo {
+			return lo
+		}
+		return lo + rng.IntN(hi-lo+1)
+	}
+	type tombstone struct{ start, end int }
+	randTombstone := func(prev tombstone) tombstone {
+		var start, end int
+		switch rng.IntN(8) {
+		case 0: // Arbitrary, possibly inverted or empty.
+			start, end = between(0, maxPos), between(0, maxPos)
+		case 1: // Inverted.
+			start = between(1, maxPos)
+			end = between(0, start-1)
+		case 2: // Empty.
+			start = between(0, maxPos)
+			end = start
+		case 3: // Same start as prev, possibly a different end.
+			start = prev.start
+			end = between(start+1, maxPos)
+		case 4: // Nested within prev.
+			start = between(prev.start, prev.end)
+			end = between(start, prev.end)
+		case 5: // Touching: starts where prev ends.
+			start = prev.end
+			end = between(start+1, maxPos)
+		case 6: // Disjoint from prev.
+			start = between(prev.end+1, maxPos)
+			end = between(start+1, maxPos)
+		case 7: // Straddling prev's end.
+			start = between(prev.start, prev.end-1)
+			end = between(prev.end, maxPos)
+		}
+		return tombstone{start: start, end: end}
+	}
+
+	sentinel := keyspan.Key{Trailer: base.MakeTrailer(base.SeqNumMax, base.InternalKeyKindRangeDelete)}
+	for iter := 0; iter < 2000; iter++ {
+		m := newMemTable(memTableOptions{size: 256 << 10, releaseAccountingReservation: func() {}})
+		n := rng.IntN(48)
+		tombstones := make([]tombstone, n)
+		for i := range tombstones {
+			var prev tombstone
+			if i > 0 {
+				prev = tombstones[rng.IntN(i)]
+			}
+			tombstones[i] = randTombstone(prev)
+		}
+		// Assign sequence numbers in a random order so that they are unrelated
+		// to the key order.
+		seqNums := rng.Perm(n)
+		var desc strings.Builder
+		for i, ts := range tombstones {
+			seqNum := base.SeqNum(seqNums[i] + 1)
+			fmt.Fprintf(&desc, "%s-%s#%d ", key(ts.start), key(ts.end), seqNum)
+			ik := base.MakeInternalKey(key(ts.start), seqNum, InternalKeyKindRangeDelete)
+			require.NoError(t, m.set(ik, key(ts.end)))
+		}
+
+		want := referenceRangeDelFragments(&m.rangeDelSkl, m.cmp, m.formatKey)
+		check := func(name string, got []keyspan.Span) {
+			t.Helper()
+			msg := fmt.Sprintf("seed %d, iteration %d, %s\ntombstones: %s\nwant: %s\ngot:  %s",
+				seed, iter, name, desc.String(), want, got)
+			require.Equal(t, want == nil, got == nil, msg)
+			require.Equal(t, len(want), len(got), msg)
+			for i := range want {
+				require.Zero(t, m.cmp(want[i].Start, got[i].Start), msg)
+				require.Zero(t, m.cmp(want[i].End, got[i].End), msg)
+				require.Equal(t, want[i].KeysOrder, got[i].KeysOrder, msg)
+				require.Equal(t, want[i].Keys, got[i].Keys, msg)
+			}
+		}
+
+		got := m.tombstones.get()
+		check("memtable", got)
+
+		// Appending to one span's keys must not change any other span.
+		for i := range got {
+			extended := append(got[i].Keys, sentinel)
+			require.Equal(t, sentinel, extended[len(extended)-1])
+		}
+		check("memtable after appends", got)
+
+		// The count is only a capacity hint: the skiplist may hold more
+		// tombstones than it says.
+		hint := rng.IntN(2*n + 1)
+		f := &keySpanFrags{count: uint32(hint)}
+		check(fmt.Sprintf("count hint %d", hint),
+			f.get(&m.rangeDelSkl, m.cmp, m.formatKey, rangeDelConstructSpan, true /* onlyFragmentOverlappingSpans */, nil /* stats */))
+
+		m.free()
+	}
+}
+
 func TestMemTableReserved(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	m := newMemTable(memTableOptions{size: 5000})
@@ -584,5 +938,42 @@ func BenchmarkMemTableIterPrevWithBounds(b *testing.B) {
 			kv = iter.SeekLT(opts.UpperBound, base.SeekLTFlagsNone)
 		}
 		_ = kv
+	}
+}
+
+// BenchmarkMemTableRangeDelRebuild measures rebuilding a memtable's fragmented
+// range deletions from scratch, as the first read after a range deletion is
+// applied must do.
+func BenchmarkMemTableRangeDelRebuild(b *testing.B) {
+	for _, n := range []int{1000, 10000} {
+		for _, layout := range []string{"disjoint", "chained", "mostly-disjoint"} {
+			b.Run(fmt.Sprintf("n=%d/layout=%s", n, layout), func(b *testing.B) {
+				m := newMemTable(memTableOptions{
+					size:                         8 << 20,
+					releaseAccountingReservation: func() {},
+				})
+				defer m.free()
+				key := func(i int) []byte { return fmt.Appendf(nil, "%08d", i) }
+				for i := 0; i < n; i++ {
+					// Tombstone i covers [2i, 2i+1). An overlapping tombstone
+					// instead covers [2i, 2i+3), which overlaps tombstone i+1.
+					end := 2*i + 1
+					if layout == "chained" || (layout == "mostly-disjoint" && i%10 == 0) {
+						end = 2*i + 3
+					}
+					ik := base.MakeInternalKey(key(2*i), base.SeqNum(i+1), InternalKeyKindRangeDelete)
+					if err := m.set(ik, key(end)); err != nil {
+						b.Fatal(err)
+					}
+				}
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					m.tombstones.frags.Store(&keySpanFrags{count: uint32(n)})
+					if len(m.tombstones.get()) == 0 {
+						b.Fatal("no range deletions")
+					}
+				}
+			})
+		}
 	}
 }

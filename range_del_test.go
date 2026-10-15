@@ -679,3 +679,65 @@ func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompac
 		}
 	}
 }
+
+// BenchmarkGetNonOverlappingDeleteRange measures point Gets that don't overlap
+// the memtable's range deletes. The invalidated variant writes a range delete
+// before each Get, invalidating the fragment cache.
+func BenchmarkGetNonOverlappingDeleteRange(b *testing.B) {
+	for _, numDels := range []int{10, 100, 1000, 10000} {
+		b.Run(fmt.Sprintf("dels=%d", numDels), func(b *testing.B) {
+			for _, mode := range []string{"cached", "invalidated"} {
+				b.Run(mode, func(b *testing.B) {
+					benchGetNonOverlappingDeleteRange(b, numDels, mode == "invalidated")
+				})
+			}
+		})
+	}
+}
+
+func benchGetNonOverlappingDeleteRange(b *testing.B, numDels int, invalidate bool) {
+	d, err := Open("", &Options{
+		FS:           vfs.NewMem(),
+		MemTableSize: 256 << 20, // large enough to keep everything in memtable
+		Logger:       testutils.Logger{T: b},
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = d.Close() }()
+
+	for i := 0; i < numDels; i++ {
+		from := fmt.Appendf(nil, "d/%09d/a", i)
+		to := fmt.Appendf(nil, "d/%09d/z", i)
+		if err := d.DeleteRange(from, to, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+	readKey := []byte("r/key")
+	if err := d.Set(readKey, []byte("v"), nil); err != nil {
+		b.Fatal(err)
+	}
+
+	// Warm caches with one read.
+	_, closer, err := d.Get(readKey)
+	require.NoError(b, err)
+	require.NoError(b, closer.Close())
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if invalidate {
+			// Invalidate the fragment cache with a range delete that doesn't
+			// overlap the read key.
+			from := fmt.Appendf(nil, "d/inv/%09d/a", i)
+			to := fmt.Appendf(nil, "d/inv/%09d/z", i)
+			if err := d.DeleteRange(from, to, nil); err != nil {
+				b.Fatal(err)
+			}
+		}
+		_, closer, err := d.Get(readKey)
+		if err != nil {
+			b.Fatal(err)
+		}
+		closer.Close()
+	}
+}

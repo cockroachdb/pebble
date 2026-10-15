@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -19,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func memTableEntrySize(keyBytes, valueBytes int) uint64 {
@@ -108,6 +110,9 @@ type memTableOptions struct {
 	size                         int
 	logSeqNum                    base.SeqNum
 	releaseAccountingReservation func()
+	// DB-created memtables share the DB's range-deletion cache stats.
+	// Standalone test memtables may leave this nil to skip collection.
+	rangeDelCacheStats *keySpanCacheStats
 }
 
 func checkMemTable(obj interface{}) {
@@ -145,10 +150,12 @@ func (m *memTable) init(opts memTableOptions) {
 	}
 	m.writerRefs.Store(1)
 	m.tombstones = keySpanCache{
-		cmp:           m.cmp,
-		formatKey:     m.formatKey,
-		skl:           &m.rangeDelSkl,
-		constructSpan: rangeDelConstructSpan,
+		cmp:                          m.cmp,
+		formatKey:                    m.formatKey,
+		skl:                          &m.rangeDelSkl,
+		constructSpan:                rangeDelConstructSpan,
+		stats:                        opts.rangeDelCacheStats,
+		onlyFragmentOverlappingSpans: true,
 	}
 	m.rangeKeys = keySpanCache{
 		cmp:           m.cmp,
@@ -359,6 +366,9 @@ func (m *memTable) computePossibleOverlaps(fn func(bounded) shouldContinue, boun
 type keySpanFrags struct {
 	count uint32
 	once  sync.Once
+	// built is set once the spans have been populated. It lets get skip the
+	// timing and bookkeeping that surround once.Do on the slow path.
+	built atomic.Bool
 	spans []keyspan.Span
 }
 
@@ -378,10 +388,31 @@ func rangeDelConstructSpan(
 // kind and a concurrent reader. The reader can load a keySpanFrags and populate
 // it even though is has been invalidated (i.e. replaced with a newer
 // keySpanFrags).
+//
+// If onlyFragmentOverlappingSpans is set, isolated spans are emitted directly.
 func (f *keySpanFrags) get(
-	skl *arenaskl.Skiplist, cmp Compare, formatKey base.FormatKey, constructSpan constructSpan,
+	skl *arenaskl.Skiplist,
+	cmp Compare,
+	formatKey base.FormatKey,
+	constructSpan constructSpan,
+	onlyFragmentOverlappingSpans bool,
+	stats *keySpanCacheStats,
 ) []keyspan.Span {
+	if f.built.Load() {
+		return f.spans
+	}
+	var start crtime.Mono
+	if stats != nil {
+		start = crtime.NowMono()
+	}
+	var ran bool
 	f.once.Do(func() {
+		ran = true
+		stats.rebuildStarted(f.count)
+		if onlyFragmentOverlappingSpans {
+			f.populateSpans(skl, cmp, formatKey, constructSpan)
+			return
+		}
 		frag := &keyspan.Fragmenter{
 			Cmp:    cmp,
 			Format: formatKey,
@@ -406,7 +437,86 @@ func (f *keySpanFrags) get(
 		}
 		frag.Finish()
 	})
+	if ran {
+		f.built.Store(true)
+		stats.rebuildFinished(start, len(f.spans))
+	} else {
+		stats.readerWaited(start)
+	}
 	return f.spans
+}
+
+// populateSpans populates f.spans with the same fragments as
+// passing every span in skl through one keyspan.Fragmenter, but only runs the
+// Fragmenter over spans that overlap another span.
+//
+// Spans arrive in start key order. Overlapping spans form a run in which each
+// span starts before the largest end key of the spans before it in the run. No
+// fragment crosses a run boundary, so a run of one span is emitted as-is.
+// This requires that the Fragmenter leave a lone span's keys in the
+// order they were decoded, which holds for range deletions since each decodes
+// to a single key.
+func (f *keySpanFrags) populateSpans(
+	skl *arenaskl.Skiplist, cmp Compare, formatKey base.FormatKey, constructSpan constructSpan,
+) {
+	emit := func(s keyspan.Span) {
+		if f.spans == nil {
+			f.spans = make([]keyspan.Span, 0, f.count)
+		}
+		f.spans = append(f.spans, s)
+	}
+	frag := keyspan.Fragmenter{Cmp: cmp, Format: formatKey, Emit: emit}
+
+	// first is the first span of the current run. It's added to frag only
+	// once a second span joins the run.
+	var first keyspan.Span
+	var overlappingSpans int
+	var overlappingSpansEnd []byte
+	emitFirst := func() {
+		// Keys points into keysDst. Cap it so an append to the emitted span
+		// can't overwrite the keys of the span decoded after it.
+		n := len(first.Keys)
+		emit(keyspan.Span{Start: first.Start, End: first.End, Keys: first.Keys[:n:n]})
+	}
+
+	// Concurrent applies may add spans beyond f.count, requiring keysDst to grow.
+	keysDst := make([]keyspan.Key, 0, f.count)
+	it := skl.NewIter(base.DefaultSplit, nil, nil)
+	for kv := it.First(); kv != nil; kv = it.Next() {
+		s, err := constructSpan(kv.K, kv.InPlaceValue(), keysDst)
+		if err != nil {
+			panic(err)
+		}
+		keysDst = s.Keys[len(s.Keys):]
+		if cmp(s.Start, s.End) >= 0 {
+			// The Fragmenter would drop this empty span.
+			continue
+		}
+		if overlappingSpans > 0 && cmp(s.Start, overlappingSpansEnd) < 0 {
+			if overlappingSpans == 1 {
+				frag.Add(first)
+			}
+			frag.Add(s)
+			overlappingSpans++
+			if cmp(s.End, overlappingSpansEnd) > 0 {
+				overlappingSpansEnd = s.End
+			}
+			continue
+		}
+		// s begins a new run, so emit the current one before anything
+		// after it. Every fragment of a multi-span run ends at or before
+		// s.Start, so truncating at s.Start flushes all of them.
+		if overlappingSpans == 1 {
+			emitFirst()
+		} else if overlappingSpans > 1 {
+			frag.Truncate(s.Start)
+		}
+		first, overlappingSpans, overlappingSpansEnd = s, 1, s.End
+	}
+	if overlappingSpans == 1 {
+		emitFirst()
+	}
+	frag.Finish()
 }
 
 // A keySpanCache is used to cache a set of fragmented spans. The cache is
@@ -419,11 +529,16 @@ type keySpanCache struct {
 	formatKey     base.FormatKey
 	constructSpan constructSpan
 	skl           *arenaskl.Skiplist
+	stats         *keySpanCacheStats
+	// onlyFragmentOverlappingSpans emits isolated spans directly and fragments
+	// overlapping spans. It requires each span to decode to a single key.
+	onlyFragmentOverlappingSpans bool
 }
 
 // Invalidate the current set of cached spans, indicating the number of
 // spans that were added.
 func (c *keySpanCache) invalidate(count uint32) {
+	c.stats.invalidated()
 	newCount := c.count.Add(count)
 	var frags *keySpanFrags
 
@@ -450,5 +565,96 @@ func (c *keySpanCache) get() []keyspan.Span {
 	if frags == nil {
 		return nil
 	}
-	return frags.get(c.skl, c.cmp, c.formatKey, c.constructSpan)
+	return frags.get(c.skl, c.cmp, c.formatKey, c.constructSpan, c.onlyFragmentOverlappingSpans, c.stats)
+}
+
+// keySpanCacheStats records how often keySpanCaches are invalidated and
+// rebuilt, and how long readers wait on a rebuild. A single instance is owned
+// by the DB and shared by the range deletion caches of all its memtables. All
+// methods are safe to call on a nil receiver, in which case they do nothing.
+type keySpanCacheStats struct {
+	// The duration histograms observe float64(time.Duration), i.e. nanoseconds.
+	rebuildDuration    prometheus.Histogram
+	readerWait         prometheus.Histogram
+	rebuildTombstones  prometheus.Histogram
+	rebuildFragments   prometheus.Histogram
+	concurrentRebuilds prometheus.Histogram
+
+	invalidations atomic.Uint64
+	// rebuildsInFlight is the number of rebuilds currently running.
+	rebuildsInFlight atomic.Int64
+}
+
+func newKeySpanCacheStats() *keySpanCacheStats {
+	return &keySpanCacheStats{
+		rebuildDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheDurationBuckets,
+		}),
+		readerWait: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheDurationBuckets,
+		}),
+		rebuildTombstones: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheCountBuckets,
+		}),
+		rebuildFragments: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheCountBuckets,
+		}),
+		concurrentRebuilds: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: rangeDelCacheConcurrencyBuckets,
+		}),
+	}
+}
+
+// invalidated records a call to keySpanCache.invalidate.
+func (s *keySpanCacheStats) invalidated() {
+	if s == nil {
+		return
+	}
+	s.invalidations.Add(1)
+}
+
+// rebuildStarted records the start of a rebuild of a keySpanFrags whose
+// memtable held the given number of tombstones when the frags were created.
+func (s *keySpanCacheStats) rebuildStarted(tombstones uint32) {
+	if s == nil {
+		return
+	}
+	s.concurrentRebuilds.Observe(float64(s.rebuildsInFlight.Add(1)))
+	s.rebuildTombstones.Observe(float64(tombstones))
+}
+
+// rebuildFinished records the end of a rebuild that began at start and produced
+// numFragments fragments.
+func (s *keySpanCacheStats) rebuildFinished(start crtime.Mono, numFragments int) {
+	if s == nil {
+		return
+	}
+	s.rebuildsInFlight.Add(-1)
+	s.rebuildDuration.Observe(float64(start.Elapsed()))
+	s.rebuildFragments.Observe(float64(numFragments))
+}
+
+// readerWaited records that a reader spent the time since start inside
+// sync.Once.Do without running the rebuild itself.
+func (s *keySpanCacheStats) readerWaited(start crtime.Mono) {
+	if s == nil {
+		return
+	}
+	s.readerWait.Observe(float64(start.Elapsed()))
+}
+
+// metrics returns the exported view of the stats. The returned histograms are
+// the live ones, not copies.
+func (s *keySpanCacheStats) metrics() MemTableRangeDelCacheMetrics {
+	if s == nil {
+		return MemTableRangeDelCacheMetrics{}
+	}
+	return MemTableRangeDelCacheMetrics{
+		RebuildDuration:    s.rebuildDuration,
+		ReaderWait:         s.readerWait,
+		RebuildTombstones:  s.rebuildTombstones,
+		RebuildFragments:   s.rebuildFragments,
+		ConcurrentRebuilds: s.concurrentRebuilds,
+		Invalidations:      s.invalidations.Load(),
+	}
 }

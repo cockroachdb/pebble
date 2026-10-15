@@ -375,6 +375,10 @@ type Metrics struct {
 
 	WALMetrics WALMetrics
 
+	// MemTableRangeDelCache describes the invalidation and rebuild activity of
+	// the memtables' caches of fragmented range deletions.
+	MemTableRangeDelCache MemTableRangeDelCacheMetrics
+
 	CategoryStats []block.CategoryStatsAggregate
 
 	SecondaryCacheMetrics SecondaryCacheMetrics
@@ -552,6 +556,35 @@ type WALMetrics struct {
 	// Updated whenever a wal.Writer is closed
 	record.LogWriterMetrics
 }
+
+// MemTableRangeDelCacheMetrics reports range-deletion cache statistics across
+// all memtables in a DB. It excludes range keys. Histograms are cumulative
+// since the DB was opened and reference the DB's live histograms.
+type MemTableRangeDelCacheMetrics struct {
+	// RebuildDuration records one duration in nanoseconds per rebuild.
+	RebuildDuration prometheus.Histogram
+	// ReaderWait records nanoseconds spent waiting for another goroutine's
+	// rebuild. Readers that run the rebuild or find it complete are not sampled.
+	ReaderWait prometheus.Histogram
+	// RebuildTombstones records the range-deletion count at invalidation for
+	// each rebuild. Concurrent additions may cause the rebuild to scan more.
+	RebuildTombstones prometheus.Histogram
+	// RebuildFragments records the number of spans produced by each rebuild.
+	RebuildFragments prometheus.Histogram
+	// ConcurrentRebuilds records DB-wide rebuilds in flight when each rebuild
+	// starts, including itself.
+	ConcurrentRebuilds prometheus.Histogram
+	// Invalidations counts applied batches containing range deletions.
+	Invalidations uint64
+}
+
+var (
+	// Buckets for range-deletion cache durations, in nanoseconds.
+	rangeDelCacheDurationBuckets = prometheus.ExponentialBucketsRange(
+		float64(time.Microsecond), float64(10*time.Second), 29)
+	rangeDelCacheCountBuckets       = prometheus.ExponentialBucketsRange(1, 1e6, 21)
+	rangeDelCacheConcurrencyBuckets = prometheus.ExponentialBuckets(1, 2, 7)
+)
 
 var (
 	// FsyncLatencyBuckets are prometheus histogram buckets suitable for a histogram

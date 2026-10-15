@@ -264,6 +264,9 @@ type DB struct {
 	// memtable allocation will reuse this memtable if it has not already been
 	// recycled.
 	memTableRecycle atomic.Pointer[memTable]
+	// rangeDelCacheStats records invalidations and rebuilds of the range
+	// deletion caches of all of this DB's memtables.
+	rangeDelCacheStats *keySpanCacheStats
 
 	// The logical size of the current WAL.
 	logSize atomic.Uint64
@@ -2318,6 +2321,7 @@ func (d *DB) Metrics() *Metrics {
 	if err := metrics.WALMetrics.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
 		d.opts.Logger.Errorf("metrics error: %s", err)
 	}
+	metrics.MemTableRangeDelCache = d.rangeDelCacheStats.metrics()
 	metrics.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
 	if d.mu.compact.flushing {
 		metrics.Flush.NumInProgress = 1
@@ -2615,8 +2619,9 @@ func (d *DB) newMemTable(
 	}
 
 	memtblOpts := memTableOptions{
-		Options:   d.opts,
-		logSeqNum: logSeqNum,
+		Options:            d.opts,
+		logSeqNum:          logSeqNum,
+		rangeDelCacheStats: d.rangeDelCacheStats,
 	}
 
 	// Before attempting to allocate a new memtable, check if there's one
