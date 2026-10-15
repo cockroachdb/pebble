@@ -48,22 +48,54 @@ func (z *zstdCompressor) Compress(compressedBuf, b []byte) ([]byte, Setting) {
 }
 
 func (z *zstdCompressor) Close() {
-	if err := z.encoder.Close(); err != nil {
-		panic(err)
-	}
+	zstdEncoderPool(z.level).Put(z.encoder)
 	z.encoder = nil
 	zstdCompressorPool.Put(z)
 }
 
-func getZstdCompressor(level int) *zstdCompressor {
-	encoder, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)))
-	if err != nil {
-		panic(err)
+// zstdEncoderPools holds a *sync.Pool of encoders per compression level.
+// Creating a zstd.Encoder allocates its match tables (several MiB at level 3),
+// so encoders are reused across compressors. An encoder used only through
+// EncodeAll keeps no state between calls and starts no goroutines.
+var zstdEncoderPools sync.Map // int -> *sync.Pool
+
+func zstdEncoderPool(level int) *sync.Pool {
+	if p, ok := zstdEncoderPools.Load(level); ok {
+		return p.(*sync.Pool)
 	}
+	p, _ := zstdEncoderPools.LoadOrStore(level, &sync.Pool{
+		New: func() any {
+			encoder, err := zstd.NewWriter(nil,
+				zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)),
+				zstd.WithEncoderConcurrency(1))
+			if err != nil {
+				panic(err)
+			}
+			return encoder
+		},
+	})
+	return p.(*sync.Pool)
+}
+
+func getZstdCompressor(level int) *zstdCompressor {
 	z := zstdCompressorPool.Get().(*zstdCompressor)
 	z.level = level
-	z.encoder = encoder
+	z.encoder = zstdEncoderPool(level).Get().(*zstd.Encoder)
 	return z
+}
+
+// zstdDecoderPool reuses decoders. Creating a zstd.Decoder allocates its
+// tables, and a decoder was created and closed for every block decompressed.
+// A decoder used only through DecodeAll keeps no state between calls and,
+// with a concurrency of 1, starts no goroutines.
+var zstdDecoderPool = sync.Pool{
+	New: func() any {
+		decoder, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true))
+		if err != nil {
+			panic(err)
+		}
+		return decoder
+	},
 }
 
 type zstdDecompressor struct{}
@@ -75,8 +107,8 @@ func (zstdDecompressor) DecompressInto(dst, src []byte) error {
 	// the decompressed block.
 	_, prefixLen := binary.Uvarint(src)
 	src = src[prefixLen:]
-	decoder, _ := zstd.NewReader(nil)
-	defer decoder.Close()
+	decoder := zstdDecoderPool.Get().(*zstd.Decoder)
+	defer zstdDecoderPool.Put(decoder)
 	result, err := decoder.DecodeAll(src, dst[:0])
 	if err != nil {
 		return err
