@@ -10,7 +10,9 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -30,7 +32,8 @@ type StandaloneManager struct {
 	initialObsolete []DeletableLog
 
 	// External synchronization is relied on when accessing w in Manager.Create,
-	// Writer.{WriteRecord,Close}.
+	// Writer.{WriteRecord,Close}. w is also only set and cleared with mu held,
+	// together with the change to mu.queue, so that List can read it.
 	w *standaloneWriter
 
 	mu struct {
@@ -92,6 +95,15 @@ func (m *StandaloneManager) List() Logs {
 		wals[i] = LogicalLog{
 			Num:      NumWAL(m.mu.queue[i].FileNum),
 			segments: []segment{{dir: m.o.Primary}},
+		}
+	}
+	if m.w != nil {
+		// m.w writes the last WAL in the queue: Create appends it, and Obsolete
+		// only removes WALs below the one being written.
+		if n := len(wals); n > 0 && wals[n-1].Num == m.w.wn {
+			wals[n-1].segments[0].flushedOffset = m.w.w.FlushedOffset
+		} else if invariants.Enabled {
+			panic(errors.AssertionFailedf("pebble: WAL %s being written is not the last of %s", m.w.wn, wals))
 		}
 	}
 	return wals
@@ -228,12 +240,13 @@ func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		QueueSemChan:        m.o.QueueSemChan,
 		WriteWALSyncOffsets: m.o.WriteWALSyncOffsets,
 	})
-	m.w = &standaloneWriter{
-		m: m,
-		w: w,
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.w = &standaloneWriter{
+		m:  m,
+		wn: wn,
+		w:  w,
+	}
 	m.mu.queue = append(m.mu.queue, base.FileInfo{FileNum: newLogNum, FileSize: newLogSize})
 	return m.w, nil
 }
@@ -297,7 +310,9 @@ func firstError(err0, err1 error) error {
 
 type standaloneWriter struct {
 	m *StandaloneManager
-	w *record.LogWriter
+	// wn is the WAL that w writes.
+	wn NumWAL
+	w  *record.LogWriter
 }
 
 var _ Writer = &standaloneWriter{}

@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -435,7 +436,12 @@ type LogWriter struct {
 	err error
 	// block is the current block being written. Protected by flusher.Mutex.
 	block *block
-	free  struct {
+	// blockRecordsEnd is the offset in block just past the last record that
+	// ends in it, or 0 if none does. It is accessed only by the writer, which
+	// hands it to the flush loop when it queues the block (see
+	// flusher.queuedRecordsEnd).
+	blockRecordsEnd int32
+	free            struct {
 		sync.Mutex
 		blocks []*block
 	}
@@ -447,7 +453,9 @@ type LogWriter struct {
 		// closed. For signalling of a sync, it is safe to call without holding
 		// flusher.Mutex.
 		ready flusherCond
-		// Set to true when the flush loop should be closed.
+		// Set to true when the flush loop should be closed. It is set along with
+		// the EOF trailer, which is then the last chunk written to the current
+		// block.
 		close bool
 		// Closed when the flush loop has terminated.
 		closed chan struct{}
@@ -459,6 +467,9 @@ type LogWriter struct {
 		// WAL file operation latency histogram
 		walFileOpHistogram WALFileOpHistogram
 		pending            []*block
+		// queuedRecordsEnd is the offset just past the last record that ends in
+		// a block that has been queued: one in pending, or one written before.
+		queuedRecordsEnd uint64
 		// Pushing and popping from pendingSyncs does not require flusher mutex to
 		// be held.
 		pendingSyncs pendingSyncs
@@ -487,6 +498,15 @@ type LogWriter struct {
 	// advance it, which is harmless: no chunks are emitted after the EOF
 	// trailer.
 	syncedOffset atomic.Uint64
+
+	// flushedOffset is the offset just past the last whole record that has been
+	// written to w, synced or not: the bytes written to w can end inside a
+	// record, whose first blocks the flush loop writes while the writer is
+	// still emitting the rest of it. It is written only by the flush loop, once
+	// all of an iteration's writes succeed (see flushLoop for how it finds the
+	// end of the records it writes), and can be read concurrently through
+	// FlushedOffset.
+	flushedOffset atomic.Uint64
 
 	// emitFragment is set at runtime depending on which FormatMajorVersion
 	// is used. emitFragment will be set to writing WAL Sync chunk formats
@@ -629,6 +649,10 @@ func (w *LogWriter) flushLoop(context.Context) {
 	// to blockSize), so queuedBlocks*blockSize is the file offset at which the
 	// contents of the block currently being filled will be written.
 	var queuedBlocks uint64
+	// recordsEnd is the offset just past the last record among the bytes that
+	// have been passed to flushPending; it becomes flushedOffset once they are
+	// written.
+	var recordsEnd uint64
 
 	// The flush loop performs flushing of full and partial data blocks to the
 	// underlying writer (LogWriter.w), syncing of the writer, and notification
@@ -708,6 +732,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 		idleDuration := workStartTime.Sub(idleStartTime)
 		pending = append(pending[:0], f.pending...)
 		f.pending = f.pending[:0]
+		recordsEnd = max(recordsEnd, f.queuedRecordsEnd)
 		f.metrics.PendingBufferLen.AddSample(int64(len(pending)))
 
 		// Grab the list of sync waiters. Note that syncQueue.load() will return
@@ -723,7 +748,14 @@ func (w *LogWriter) flushLoop(context.Context) {
 		// picks up the entry in syncQ and not the buffered data.
 		written := w.block.written.Load()
 		data := w.block.buf[w.block.flushed:written]
+		curBlock, curFlushed := w.block, w.block.flushed
 		w.block.flushed = written
+		// The EOF trailer, if it is there, is the last chunk of the current
+		// block, and is not a record.
+		recordsWritten := written
+		if f.close {
+			recordsWritten -= recyclableHeaderSize
+		}
 
 		fErr := f.err
 		f.Unlock()
@@ -748,7 +780,21 @@ func (w *LogWriter) flushLoop(context.Context) {
 		// instead of written.
 		queuedBlocks += uint64(len(pending))
 		writtenOffset := queuedBlocks*uint64(blockSize) + uint64(written)
-		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, snap, writtenOffset)
+		// Find the end of the last record among the bytes written below. The
+		// writer hands over where records end in a block when it queues the block
+		// (queuedRecordsEnd, taken above along with pending), and the current
+		// block is written up to written, which is loaded after the sync snapshot.
+		// Every record whose sync this iteration completes is therefore covered.
+		prevRecordsEnd := recordsEnd
+		if e := w.recordsEndInCurrentBlock(curBlock, curFlushed, recordsWritten); e > 0 {
+			recordsEnd = queuedBlocks*uint64(blockSize) + uint64(e)
+		}
+		if invariants.Enabled && (recordsEnd < prevRecordsEnd || recordsEnd > writtenOffset) {
+			panic(errors.AssertionFailedf(
+				"pebble/record: records end at %d, before the previous end %d or past the written offset %d",
+				errors.Safe(recordsEnd), errors.Safe(prevRecordsEnd), errors.Safe(writtenOffset)))
+		}
+		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, snap, writtenOffset, recordsEnd)
 		f.Lock()
 		if synced && f.walFileOpHistogram != nil {
 			f.walFileOpHistogram.Observe(float64(syncLatency))
@@ -787,12 +833,52 @@ func (w *LogWriter) flushLoop(context.Context) {
 	}
 }
 
+// recordsEndInCurrentBlock returns the offset in b, the current block, just
+// past the last record that ends in b.buf[flushed:n], or 0 if none does. The
+// first n bytes of b are a sequence of chunks, filled in by the writer, which
+// may be filling in more of b concurrently. The first flushed of them have
+// been written to w already, which may have modified them (io.Writer forbids
+// it, but a writer that does it must not change the result), and are not read.
+//
+// The writer does not hand its own account of where records end in the block
+// (blockRecordsEnd) to the flush loop until it queues the block, but it does
+// not need to: every fragment of a record but the last fills the rest of its
+// block, so a sequence of chunks that ends before the end of a block ends a
+// record. Only a sequence that fills the block has to be parsed, and the writer
+// queues such a block as soon as it has filled it.
+func (w *LogWriter) recordsEndInCurrentBlock(b *block, flushed, n int32) int32 {
+	if n < blockSize {
+		return n
+	}
+	var end int32
+	for i := flushed; i+legacyHeaderSize <= n; {
+		encoding := b.buf[i+6]
+		if int(encoding) >= len(headerFormatMappings) {
+			break
+		}
+		h := headerFormatMappings[encoding]
+		if (h.wireFormat != recyclableWireFormat && h.wireFormat != walSyncWireFormat) ||
+			i+int32(h.headerSize) > n {
+			break
+		}
+		next := i + int32(h.headerSize) + int32(binary.LittleEndian.Uint16(b.buf[i+4:i+6]))
+		if binary.LittleEndian.Uint32(b.buf[i+7:i+11]) == w.logNum &&
+			(h.chunkPosition == fullChunkPosition || h.chunkPosition == lastChunkPosition) {
+			end = next
+		}
+		i = next
+	}
+	return end
+}
+
 // flushPending writes the pending blocks and the tail of the current block to
 // the underlying writer, and syncs it if there are any pending syncs.
 // writtenOffset is the file offset just past the last byte being written; on a
-// successful sync it becomes the LogWriter's syncedOffset.
+// successful sync it becomes the LogWriter's syncedOffset. recordsEnd is the end
+// of the whole records among those bytes; once the writes succeed it becomes
+// the LogWriter's flushedOffset.
 func (w *LogWriter) flushPending(
-	data []byte, pending []*block, snap pendingSyncsSnapshot, writtenOffset uint64,
+	data []byte, pending []*block, snap pendingSyncsSnapshot, writtenOffset, recordsEnd uint64,
 ) (synced bool, syncLatency time.Duration, bytesWritten int64, err error) {
 	defer func() {
 		// Translate panics into errors. The errors will cause flushLoop to shut
@@ -818,6 +904,9 @@ func (w *LogWriter) flushPending(
 		if w.flusher.walFileOpHistogram != nil {
 			w.flusher.walFileOpHistogram.Observe(float64(writeStart.Elapsed()))
 		}
+	}
+	if err == nil {
+		w.flushedOffset.Store(recordsEnd)
 	}
 
 	synced = !snap.empty()
@@ -888,6 +977,10 @@ func (w *LogWriter) queueBlock() {
 	f := &w.flusher
 	f.Lock()
 	f.pending = append(f.pending, w.block)
+	if w.blockRecordsEnd > 0 {
+		f.queuedRecordsEnd = uint64(w.blockNum)*blockSize + uint64(w.blockRecordsEnd)
+		w.blockRecordsEnd = 0
+	}
 	w.block = nextBlock
 	f.ready.Signal()
 	w.err = w.flusher.err
@@ -913,14 +1006,10 @@ func (w *LogWriter) closeInternal(lastQueuedRecord PendingSyncIndex) error {
 
 	// Emit an EOF trailer signifying the end of this log. This helps readers
 	// differentiate between a corrupted entry in the middle of a log from
-	// garbage at the tail from a recycled log file.
-	w.emitEOFTrailer()
-
-	// Signal the flush loop to close.
-	f.Lock()
-	f.close = true
-	f.ready.Signal()
-	f.Unlock()
+	// garbage at the tail from a recycled log file. It is emitted along with
+	// the signal to the flush loop to close, which tells the flush loop that
+	// the trailer is there.
+	w.emitEOFTrailerAndClose()
 
 	// Wait for the flush loop to close. The flush loop will not close until all
 	// pending data has been written or an error occurs.
@@ -1039,12 +1128,42 @@ func (w *LogWriter) Size() int64 {
 	return w.blockNum*blockSize + int64(w.block.written.Load())
 }
 
-// emitEOFTrailer writes a special recyclable chunk header to signal EOF.
-// The reason why this function writes the recyclable chunk header instead
-// of having a function for writing recyclable and WAL sync chunks as
-// emitFragment does it because there is no reason to add 8 additional
-// bytes to the EOFTrailer for the SyncedOffset as it will be zeroed out anyway.
-func (w *LogWriter) emitEOFTrailer() {
+// FlushedOffset returns the length of a prefix of the log that is made of whole
+// records written to the underlying writer, whether or not they have been
+// synced: the offset just past the last of them, not counting any zero padding
+// that follows it in its block. The LogWriter does not write to the prefix
+// again, so a reader of the file sees it unchanged while the log keeps growing,
+// and a reader of only the prefix reaches a clean end of the log exactly at its
+// end. It may be called concurrently with any other method.
+//
+// The prefix includes every record whose sync has completed, but not the EOF
+// trailer that Close writes. It can lag behind the records that have been
+// written: it advances only when the flush loop writes, and a record written
+// without a sync request does not wake the flush loop, so such a record can
+// stay outside the prefix until a later sync request, a filled block, or Close
+// has the flush loop write again.
+//
+// The flush loop derives the prefix from the shape of what the writer emits
+// rather than from a per-record watermark: every fragment but the last of a
+// record fills its block (emitFragment*, which invariants builds check), and
+// the EOF trailer is emitted only together with closing the flusher
+// (emitEOFTrailerAndClose). A change to either has to keep
+// recordsEndInCurrentBlock correct.
+func (w *LogWriter) FlushedOffset() int64 {
+	return int64(w.flushedOffset.Load())
+}
+
+// emitEOFTrailerAndClose writes a special recyclable chunk header to signal
+// EOF, and signals the flush loop to close, in one critical section of the
+// flusher mutex: the flush loop relies on finding the trailer only alongside
+// close. The reason why this function writes the recyclable chunk header
+// instead of having a function for writing recyclable and WAL sync chunks as
+// emitFragment does it because there is no reason to add 8 additional bytes to
+// the EOFTrailer for the SyncedOffset as it will be zeroed out anyway.
+func (w *LogWriter) emitEOFTrailerAndClose() {
+	f := &w.flusher
+	f.Lock()
+	defer f.Unlock()
 	// Write a recyclable chunk header with a different log number.  Readers
 	// will treat the header as EOF when the log number does not match.
 	b := w.block
@@ -1054,6 +1173,23 @@ func (w *LogWriter) emitEOFTrailer() {
 	b.buf[i+6] = recyclableFullChunkEncoding
 	binary.LittleEndian.PutUint32(b.buf[i+7:i+11], w.logNum+1) // Log number
 	b.written.Store(i + int32(recyclableHeaderSize))
+	f.close = true
+	f.ready.Signal()
+}
+
+// noteFragmentEnd records where a record ends in the current block, if the
+// fragment that was just emitted, which ends at j, is the last of its record.
+// The flush loop finds where the records end in a block it writes before the
+// writer has queued it by relying on the other fragments filling their blocks;
+// see recordsEndInCurrentBlock.
+func (w *LogWriter) noteFragmentEnd(last bool, j int32) {
+	if last {
+		w.blockRecordsEnd = j
+	} else if invariants.Enabled && j != blockSize {
+		panic(errors.AssertionFailedf(
+			"pebble/record: a fragment that does not end its record ends at %d, short of the end of its block",
+			errors.Safe(j)))
+	}
 }
 
 func (w *LogWriter) emitFragmentRecyclable(n int, p []byte) (remainingP []byte) {
@@ -1083,6 +1219,7 @@ func (w *LogWriter) emitFragmentRecyclable(n int, p []byte) (remainingP []byte) 
 	binary.LittleEndian.PutUint32(b.buf[i+0:i+4], crc.New(b.buf[i+6:j]).Value())
 	binary.LittleEndian.PutUint16(b.buf[i+4:i+6], uint16(r))
 	b.written.Store(j)
+	w.noteFragmentEnd(last, j)
 
 	if blockSize-b.written.Load() < recyclableHeaderSize {
 		// There is no room for another fragment in the block, so fill the
@@ -1121,6 +1258,7 @@ func (w *LogWriter) emitFragmentSyncOffsets(n int, p []byte) (remainingP []byte)
 	binary.LittleEndian.PutUint32(b.buf[i+0:i+4], crc.New(b.buf[i+6:j]).Value())
 	binary.LittleEndian.PutUint16(b.buf[i+4:i+6], uint16(r))
 	b.written.Store(j)
+	w.noteFragmentEnd(last, j)
 
 	if blockSize-b.written.Load() < walSyncHeaderSize {
 		// There is no room for another fragment in the block, so fill the

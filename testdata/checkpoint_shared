@@ -188,9 +188,9 @@ sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/000006.log
 open: db/000006.log (options: *vfs.sequentialReadsOption)
+close: db/000006.log
 sync-data: checkpoints/checkpoint1/000006.log
 close: checkpoints/checkpoint1/000006.log
-close: db/000006.log
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 
@@ -243,9 +243,9 @@ sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 create: checkpoints/checkpoint2/000006.log
 open: db/000006.log (options: *vfs.sequentialReadsOption)
+close: db/000006.log
 sync-data: checkpoints/checkpoint2/000006.log
 close: checkpoints/checkpoint2/000006.log
-close: db/000006.log
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 
@@ -294,9 +294,9 @@ sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 create: checkpoints/checkpoint3/000006.log
 open: db/000006.log (options: *vfs.sequentialReadsOption)
+close: db/000006.log
 sync-data: checkpoints/checkpoint3/000006.log
 close: checkpoints/checkpoint3/000006.log
-close: db/000006.log
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 

@@ -33,6 +33,22 @@ type LogicalLog struct {
 type segment struct {
 	logNameIndex LogNameIndex
 	dir          Dir
+	// flushedOffset is set by Manager.List for the segment that the WAL's
+	// writer was appending records to when it was listed, and is nil for any
+	// other segment. It returns the writer's record.LogWriter.FlushedOffset: the
+	// length of the prefix of the file that is made of whole records the writer
+	// has written. The prefix only grows, and the bytes in it do not change.
+	//
+	// The bytes past the prefix can change while they are read: a recycled file
+	// still holds the bytes of its previous life there until the writer
+	// overwrites them. A reader that interleaved reads of those bytes with the
+	// writer could see stale bytes followed by fresh chunks whose synced offsets
+	// vouch for them, which the record.Reader reports as corruption. The reader
+	// of the segment therefore reads only the prefix (see flushedPrefixReader),
+	// which also means that the segment must end cleanly exactly where the
+	// prefix ends: an invalid record in it, or an end of the log before the end
+	// of the prefix, is corruption, not a torn tail.
+	flushedOffset func() int64
 }
 
 // String implements fmt.Stringer.
@@ -71,6 +87,9 @@ func (ll LogicalLog) PhysicalSize() (uint64, error) {
 }
 
 // OpenForRead a logical WAL for reading.
+//
+// If ll was returned by Manager.List, the WAL may be read while its writer
+// appends to it; see Manager.List.
 func (ll LogicalLog) OpenForRead() Reader {
 	return newVirtualWALReader(ll)
 }
@@ -223,6 +242,9 @@ type virtualWALReader struct {
 	currIndex  int
 	currFile   vfs.File
 	currReader *record.Reader
+	// currPrefix is what currReader reads from, if the current segment is
+	// being appended to (see segment.flushedOffset), and nil otherwise.
+	currPrefix *flushedPrefixReader
 	// off describes the current Offset within the WAL.
 	off Offset
 	// lastSeqNum is the sequence number of the batch contained within the last
@@ -266,6 +288,15 @@ func (r *virtualWALReader) nextRecord() (io.Reader, batchrepr.Header, Offset, er
 		// Obtain a Reader for the next record within this log file.
 		rec, err := r.currReader.Next()
 		if errors.Is(err, io.EOF) {
+			if r.currPrefix != nil && !r.currPrefix.endsAt(r.currReader.Offset()) {
+				// The prefix is made of whole records, so the log ends cleanly at the
+				// end of the prefix and nowhere before it: the file reads short of
+				// the prefix, or a chunk in it reads as an EOF trailer.
+				return nil, batchrepr.Header{}, r.off, base.CorruptionErrorf(
+					"pebble: corrupt log file logNum=%d, logNameIndex=%s, being written: it ends at offset %d, short of the %d bytes of records written to it",
+					r.Num, errors.Safe(r.segments[r.currIndex].logNameIndex),
+					errors.Safe(r.currReader.Offset()), errors.Safe(r.currPrefix.end))
+			}
 			// This file is exhausted; continue to the next.
 			err := r.nextFile()
 			if err != nil {
@@ -283,6 +314,15 @@ func (r *virtualWALReader) nextRecord() (io.Reader, batchrepr.Header, Offset, er
 		r.recordBuf.Reset()
 		if err == nil {
 			_, err = io.Copy(&r.recordBuf, rec)
+		}
+		if record.IsInvalidRecord(err) && r.segments[r.currIndex].flushedOffset != nil {
+			// The segment is read only up to the end of the whole records its
+			// writer had written to it, so it cannot have a torn tail, and the read
+			// ahead that would confirm corruption cannot see past that end. The
+			// cause is hidden so that the error is not taken for the end of the WAL.
+			return nil, batchrepr.Header{}, r.off, base.MarkCorruptionError(errors.Wrapf(errors.Handled(err),
+				"pebble: corrupt log file logNum=%d, logNameIndex=%s, being written",
+				r.Num, errors.Safe(r.segments[r.currIndex].logNameIndex)))
 		}
 		// The record may be malformed. This is expected during a WAL failover,
 		// because the tail of a WAL may be only partially written or otherwise
@@ -378,8 +418,60 @@ func (r *virtualWALReader) nextFile() error {
 	if r.currFile, err = fs.Open(path, vfs.SequentialReadsOption); err != nil {
 		return errors.Wrapf(err, "opening WAL file segment %q", path)
 	}
-	r.currReader = record.NewReader(r.currFile, base.DiskFileNum(r.Num))
+	var src io.Reader = r.currFile
+	r.currPrefix = nil
+	if flushedOffset := r.segments[r.currIndex].flushedOffset; flushedOffset != nil {
+		r.currPrefix = &flushedPrefixReader{r: r.currFile, flushedOffset: flushedOffset}
+		src = r.currPrefix
+	}
+	r.currReader = record.NewReader(src, base.DiskFileNum(r.Num))
 	return nil
+}
+
+// flushedPrefixReader reads the prefix of a segment file that its writer has
+// written, as reported by flushedOffset (see segment.flushedOffset), while the
+// writer may keep appending to the file. Each Read is limited to the prefix as
+// of that Read, so the reader picks up what the writer writes while it reads,
+// until it first reaches the end of the prefix.
+//
+// From then on it reports io.EOF, so that to the record.Reader the prefix is a
+// file that has stopped growing. This is defensive: the record.Reader takes a
+// short block for the last block of the file, and reads past it only to look
+// for confirmation of corruption it has already found, which the strict
+// checks in virtualWALReader.nextRecord report regardless of what it finds.
+type flushedPrefixReader struct {
+	r             io.Reader
+	flushedOffset func() int64
+	// off is the offset of the next byte to read.
+	off int64
+	// atEnd is set once a Read has reached the end of the prefix, which is then
+	// end.
+	atEnd bool
+	end   int64
+}
+
+// Read implements io.Reader.
+func (f *flushedPrefixReader) Read(p []byte) (int, error) {
+	if !f.atEnd {
+		f.end = f.flushedOffset()
+		f.atEnd = f.end-f.off < int64(len(p))
+	}
+	if n := f.end - f.off; n < int64(len(p)) {
+		if n <= 0 {
+			return 0, io.EOF
+		}
+		p = p[:n]
+	}
+	n, err := f.r.Read(p)
+	f.off += int64(n)
+	return n, err
+}
+
+// endsAt returns whether a record.Reader of the prefix that found the end of
+// the log at offset off read the prefix whole: the prefix ends at off, and the
+// file did not end before it.
+func (f *flushedPrefixReader) endsAt(off int64) bool {
+	return f.atEnd && off == f.end
 }
 
 // Copy copies the contents of the provided LogicalLog to a new WAL file on fs
@@ -390,7 +482,8 @@ func (r *virtualWALReader) nextFile() error {
 // Copy does NOT sync the destination directory, and the caller must explicitly
 // sync it if they require the new WAL file to be durably linked.
 //
-// The WAL file identified by ll may be written concurrently.
+// The WAL file identified by ll may be written concurrently, provided ll was
+// returned by Manager.List (see there for what is read of it).
 func Copy(
 	fs vfs.FS, dstDir string, ll LogicalLog, visibleSeqNum base.SeqNum, cfg record.LogWriterConfig,
 ) (err error) {

@@ -191,9 +191,9 @@ sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/000006.log
 open: db/000006.log (options: *vfs.sequentialReadsOption)
+close: db/000006.log
 sync-data: checkpoints/checkpoint1/000006.log
 close: checkpoints/checkpoint1/000006.log
-close: db/000006.log
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 
@@ -235,9 +235,9 @@ sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 create: checkpoints/checkpoint2/000006.log
 open: db/000006.log (options: *vfs.sequentialReadsOption)
+close: db/000006.log
 sync-data: checkpoints/checkpoint2/000006.log
 close: checkpoints/checkpoint2/000006.log
-close: db/000006.log
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 
@@ -276,9 +276,9 @@ sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 create: checkpoints/checkpoint3/000006.log
 open: db/000006.log (options: *vfs.sequentialReadsOption)
+close: db/000006.log
 sync-data: checkpoints/checkpoint3/000006.log
 close: checkpoints/checkpoint3/000006.log
-close: db/000006.log
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 
@@ -607,9 +607,9 @@ sync: checkpoints/checkpoint4
 close: checkpoints/checkpoint4
 create: checkpoints/checkpoint4/000008.log
 open: db/000008.log (options: *vfs.sequentialReadsOption)
+close: db/000008.log
 sync-data: checkpoints/checkpoint4/000008.log
 close: checkpoints/checkpoint4/000008.log
-close: db/000008.log
 sync: checkpoints/checkpoint4
 close: checkpoints/checkpoint4
 
@@ -718,9 +718,9 @@ sync: checkpoints/checkpoint5
 close: checkpoints/checkpoint5
 create: checkpoints/checkpoint5/000008.log
 open: db/000008.log (options: *vfs.sequentialReadsOption)
+close: db/000008.log
 sync-data: checkpoints/checkpoint5/000008.log
 close: checkpoints/checkpoint5/000008.log
-close: db/000008.log
 sync: checkpoints/checkpoint5
 close: checkpoints/checkpoint5
 
@@ -824,9 +824,9 @@ sync: checkpoints/checkpoint6
 close: checkpoints/checkpoint6
 create: checkpoints/checkpoint6/000008.log
 open: db/000008.log (options: *vfs.sequentialReadsOption)
+close: db/000008.log
 sync-data: checkpoints/checkpoint6/000008.log
 close: checkpoints/checkpoint6/000008.log
-close: db/000008.log
 sync: checkpoints/checkpoint6
 close: checkpoints/checkpoint6
 
@@ -1213,9 +1213,9 @@ sync: checkpoints/checkpoint9
 close: checkpoints/checkpoint9
 create: checkpoints/checkpoint9/000007.log
 open: valsepdb/000007.log (options: *vfs.sequentialReadsOption)
+close: valsepdb/000007.log
 sync-data: checkpoints/checkpoint9/000007.log
 close: checkpoints/checkpoint9/000007.log
-close: valsepdb/000007.log
 sync: checkpoints/checkpoint9
 close: checkpoints/checkpoint9
 

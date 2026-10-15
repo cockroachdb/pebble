@@ -14,7 +14,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
@@ -24,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -421,6 +424,155 @@ func TestCheckpointFlushWAL(t *testing.T) {
 		require.NoError(t, iter.Close())
 		require.NoError(t, d.Close())
 	}
+}
+
+// readCheckpointKVs opens the checkpoint in dir on fs, and returns its keys
+// and values.
+func readCheckpointKVs(t *testing.T, fs vfs.FS, dir string) map[string]string {
+	t.Helper()
+	d, err := Open(dir, &Options{FS: fs})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+	it, err := d.NewIter(nil)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, it.Close()) }()
+	kvs := make(map[string]string)
+	for valid := it.First(); valid; valid = it.Next() {
+		kvs[string(it.Key())] = string(it.Value())
+	}
+	return kvs
+}
+
+// TestCheckpointCopiesRecycledLiveWAL checks that a checkpoint of a store whose
+// live WAL is a recycled file succeeds, and holds what it must, when the WAL
+// grows while the checkpoint copies it.
+//
+// The copy must not read the live WAL past what has been written to it, where
+// a recycled file still holds stale bytes. The copy's first read of the live
+// WAL ends within the first block, at the end of what had been written; the
+// test holds a second read, if the copy makes one, while it writes past the end
+// of that block.
+func TestCheckpointCopiesRecycledLiveWAL(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	mem := vfs.NewMem()
+	var walPath atomic.Pointer[string]
+	var reads atomic.Int32
+	paused, resume := make(chan struct{}), make(chan struct{})
+	var resumeOnce sync.Once
+	resumeCopy := func() { resumeOnce.Do(func() { close(resume) }) }
+	inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if p := walPath.Load(); p != nil && op.Path == *p &&
+			(op.Kind == errorfs.OpFileRead || op.Kind == errorfs.OpFileReadAt) &&
+			errorfs.CallStackIncludes("wal.Copy").Evaluate(op) && reads.Add(1) == 2 {
+			close(paused)
+			<-resume
+		}
+		return nil
+	})
+	d, err := Open("db", &Options{FS: errorfs.Wrap(mem, inj), FormatMajorVersion: FormatNewest})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+	defer resumeCopy()
+	value := strings.Repeat("x", 1000)
+	want := make(map[string]string)
+	// Fill a WAL with several blocks' worth and flush twice: the first flush
+	// leaves that WAL to be recycled, and the second reuses it as the live WAL.
+	for round := 0; round < 2; round++ {
+		for i := 0; i < 100; i++ {
+			k := fmt.Sprintf("a%03d", i)
+			require.NoError(t, d.Set([]byte(k), []byte(value), nil))
+			want[k] = value
+		}
+		require.NoError(t, d.Flush())
+		d.TestOnlyWaitForCleaning()
+	}
+	logs := d.mu.log.manager.List()
+	_, path := logs[len(logs)-1].SegmentLocation(0)
+	info, err := mem.Stat(path)
+	require.NoError(t, err)
+	require.Greater(t, info.Size(), int64(64<<10), "the live WAL %s is not a recycled file", path)
+	// The live WAL holds only this write, which the checkpoint must hold since
+	// it is taken WithFlushedWAL.
+	require.NoError(t, d.Set([]byte("b"), []byte("y"), nil))
+	want["b"] = "y"
+
+	walPath.Store(&path)
+	errCh := make(chan error, 1)
+	go func() { errCh <- d.Checkpoint("checkpoint", WithFlushedWAL()) }()
+	select {
+	case <-paused:
+		for i := 0; i < 40; i++ {
+			require.NoError(t, d.Set([]byte(fmt.Sprintf("c%03d", i)), []byte(value), Sync))
+		}
+		resumeCopy()
+		t.Fatalf("the checkpoint read the live WAL past what had been written to it (Checkpoint: %v)", <-errCh)
+	case err = <-errCh:
+	}
+	require.NoError(t, err)
+	require.Equal(t, int32(1), reads.Load())
+	require.Equal(t, want, readCheckpointKVs(t, mem, "checkpoint"))
+}
+
+// TestCheckpointCopiesWALGrowingDuringCopy checks that a checkpoint copies, of
+// the WAL being written, what has been written to it by the time the copy
+// reads it, rather than only what had been written when Checkpoint started:
+// a write that the checkpoint can see is copied if it reached the WAL file in
+// the meantime, even though it was not synced when Checkpoint started (which
+// WithFlushedWAL would have ensured). The test holds the copy as it opens the
+// WAL, while a synced write makes the WAL's writer write the earlier one too.
+func TestCheckpointCopiesWALGrowingDuringCopy(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	mem := vfs.NewMem()
+	var walPath atomic.Pointer[string]
+	opened, resume := make(chan struct{}), make(chan struct{})
+	var resumeOnce sync.Once
+	resumeCopy := func() { resumeOnce.Do(func() { close(resume) }) }
+	inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if p := walPath.Load(); p != nil && op.Path == *p && op.Kind == errorfs.OpOpen &&
+			errorfs.CallStackIncludes("wal.Copy").Evaluate(op) && walPath.CompareAndSwap(p, nil) {
+			close(opened)
+			<-resume
+		}
+		return nil
+	})
+	d, err := Open("db", &Options{FS: errorfs.Wrap(mem, inj), FormatMajorVersion: FormatNewest})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+	defer resumeCopy()
+	d.mu.Lock()
+	logs := d.mu.log.manager.List()
+	w := d.mu.log.writer
+	d.mu.Unlock()
+	_, path := logs[len(logs)-1].SegmentLocation(0)
+	require.NoError(t, d.Set([]byte("a"), []byte("1"), Sync))
+	// The WAL's writer updates its metrics with the mutex that guards them held
+	// until it waits for more work, so once they account for the write above,
+	// the writer is waiting.
+	require.Eventually(t, func() bool { return w.Metrics().WriteThroughput.Bytes > 0 },
+		10*time.Second, time.Millisecond)
+	info, err := mem.Stat(path)
+	require.NoError(t, err)
+	written := info.Size()
+	// A write that is not synced, and that no sync follows, stays in the WAL
+	// writer's buffer.
+	require.NoError(t, d.Set([]byte("b"), []byte("2"), NoSync))
+	info, err = mem.Stat(path)
+	require.NoError(t, err)
+	require.Equal(t, written, info.Size(), "the unsynced write reached the WAL file")
+
+	walPath.Store(&path)
+	errCh := make(chan error, 1)
+	go func() { errCh <- d.Checkpoint("checkpoint") }()
+	select {
+	case <-opened:
+	case err := <-errCh:
+		t.Fatalf("the checkpoint did not copy the WAL (Checkpoint: %v)", err)
+	}
+	// This write is not visible to the checkpoint, and is not copied.
+	require.NoError(t, d.Set([]byte("c"), []byte("3"), Sync))
+	resumeCopy()
+	require.NoError(t, <-errCh)
+	require.Equal(t, map[string]string{"a": "1", "b": "2"}, readCheckpointKVs(t, mem, "checkpoint"))
 }
 
 func TestCheckpointManyFiles(t *testing.T) {

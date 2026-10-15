@@ -207,6 +207,11 @@ func (d *DB) Checkpoint(
 	// Acquire the logs while holding mutexes to ensure we don't race with a
 	// flush that might mark a log that's relevant to `current` as obsolete
 	// before our call to List.
+	//
+	// The WAL being written is copied while it grows (see wal.Manager.List for
+	// what is read of it). The copy includes every write synced before List is
+	// called, and so, with WithFlushedWAL, every write committed before
+	// Checkpoint was called.
 	allLogicalLogs := d.mu.log.manager.List()
 
 	// Collect SSTable files referenced by flushable ingest entries. These files
