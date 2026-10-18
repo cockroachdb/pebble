@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
-	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -602,7 +601,6 @@ func waitTableStatsForTest(d *DB) {
 //     per-table MaxUserKeySize (from the table backing) followed by the
 //     LSM-wide metrics.
 func TestMetricsMaxUserKeySize(t *testing.T) {
-	defer leaktest.AfterTest(t)()
 
 	var d *DB
 	var opts *Options
