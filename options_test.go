@@ -630,6 +630,20 @@ func TestOptionsParseKeySchema(t *testing.T) {
 	o = &Options{}
 	require.NoError(t, o.Parse("[Options]\n  key_schema=some-other-schema\n", nil))
 	require.Equal(t, "some-other-schema", o.KeySchema)
+
+	// A DefaultKeySchema(...) value that names an unrecognized comparer is
+	// tolerated, like an unrecognized comparer value.
+	o = &Options{}
+	require.NoError(t, o.Parse("[Options]\n  key_schema=DefaultKeySchema(unrecognized,16)\n", nil))
+	require.Equal(t, "DefaultKeySchema(unrecognized,16)", o.KeySchema)
+	require.NotContains(t, o.KeySchemas, o.KeySchema)
+
+	// The OPTIONS of a DB that uses a custom comparer parse without hooks.
+	comparer := *testkeys.Comparer
+	comparer.Name = "custom-comparer"
+	o = &Options{Comparer: &comparer}
+	o.EnsureDefaults()
+	require.NoError(t, (&Options{}).Parse(o.String(), nil))
 }
 
 func TestOptionsValidate(t *testing.T) {

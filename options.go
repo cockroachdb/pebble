@@ -2282,7 +2282,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 						if err == nil {
 							bundleSize, err = strconv.Atoi(args[1])
 						}
-						if err == nil {
+						// An unrecognized comparer is tolerated, like it is for the
+						// comparer option, but no schema can be constructed for it.
+						if err == nil && comparer != nil {
 							schema := colblk.DefaultKeySchema(comparer, bundleSize)
 							o.KeySchema = schema.Name
 							o.KeySchemas[o.KeySchema] = &schema
