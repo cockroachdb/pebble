@@ -173,19 +173,25 @@ func (q *recordQueue) push(
 		q.mu.Unlock()
 	}
 	q.mu.RLock()
+	// Reclaim memory for consumed entries. We couldn't do that in pop since
+	// multiple consumers are popping using CAS and that immediately transfers
+	// ownership to the producer.
+	//
+	// This must happen before writing the new entry. The reclaimed range
+	// [lastTailObservedByProducer, t) and the live range [t, h) together span
+	// at most m slots, but can span exactly m (e.g. the previous push filled
+	// the buffer without growing it, and a pop then advanced the tail). In
+	// that case the reclaimed range includes slot h%m.
+	for i := q.lastTailObservedByProducer; i < t; i++ {
+		q.buffer[int(i)%m] = recordQueueEntry{}
+	}
+	q.lastTailObservedByProducer = t
 	q.buffer[int(h)%m] = recordQueueEntry{
 		p:          p,
 		opts:       opts,
 		refCount:   refCount,
 		writeStart: writeStart,
 	}
-	// Reclaim memory for consumed entries. We couldn't do that in pop since
-	// multiple consumers are popping using CAS and that immediately transfers
-	// ownership to the producer.
-	for i := q.lastTailObservedByProducer; i < t; i++ {
-		q.buffer[int(i)%m] = recordQueueEntry{}
-	}
-	q.lastTailObservedByProducer = t
 	q.headTail.Add(1 << headTailBits)
 	writer = q.writer
 	if writer == latestWriterInWriteRecord {
