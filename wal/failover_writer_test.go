@@ -772,4 +772,40 @@ func TestFailoverWriterManyRecords(t *testing.T) {
 	stopper.stop()
 }
 
+// TestRecordQueuePushDoesNotClobberOwnEntry is a regression test for a bug
+// where recordQueue.push wrote the new entry and then ran its reclaim loop
+// over [lastTailObservedByProducer, tail). If the queue had been filled to
+// exactly len(buffer) entries without growing, and a pop then advanced the
+// tail, the reclaim range of the next push spanned len(buffer) slots and so
+// included the slot that push had just written. The entry lost its
+// SyncOptions, and pop never signaled the waiter.
+func TestRecordQueuePushDoesNotClobberOwnEntry(t *testing.T) {
+	var q recordQueue
+	q.init(prometheus.NewHistogram(prometheus.HistogramOpts{}))
+	m := len(q.buffer)
+	// Fill the queue to exactly m entries. Each push sees at most m-1 queued
+	// entries, so the buffer does not grow, and lastTailObservedByProducer
+	// stays at 0.
+	for i := 0; i < m; i++ {
+		q.push([]byte("x"), SyncOptions{}, nil, 0, 0, nil)
+	}
+	require.Equal(t, m, len(q.buffer))
+	// Advance the tail by one. The next push sees m-1 entries (no growth) and
+	// writes slot m%m == 0, which is also the slot the reclaim loop clears.
+	require.Equal(t, 0, q.pop(0, nil))
+	var wg sync.WaitGroup
+	var err error
+	wg.Add(1)
+	idx, _, _ := q.push([]byte("y"), SyncOptions{Done: &wg, Err: &err}, nil, 0, 0, nil)
+	require.Equal(t, m, len(q.buffer))
+	entry := q.buffer[int(idx)%len(q.buffer)]
+	require.Equal(t, []byte("y"), entry.p)
+	require.True(t, entry.opts.Done == &wg, "entry lost its sync notification")
+	// Pop the remaining m entries. Exactly one of them carries a sync.
+	require.Equal(t, 1, q.pop(idx, nil), "sync notification lost")
+	wg.Wait()
+	require.NoError(t, err)
+	require.Equal(t, 0, q.length())
+}
+
 // TODO(sumeer): randomized error injection and delay injection test.
