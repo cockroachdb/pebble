@@ -53,6 +53,7 @@ func main() {
 
 	replayCmd := initReplayCmd()
 	benchCmd.AddCommand(
+		rangeDelCmd,
 		replayCmd,
 		scanCmd,
 		syncCmd,
@@ -84,7 +85,7 @@ func main() {
 	)
 	rootCmd.AddCommand(t.Commands...)
 
-	for _, cmd := range []*cobra.Command{replayCmd, scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{rangeDelCmd, replayCmd, scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {
 		cmd.Flags().BoolVarP(
 			&commonCfg.Verbose, "verbose", "v", false, "enable verbose event logging")
 		cmd.Flags().StringVar(
@@ -92,15 +93,15 @@ func main() {
 		cmd.Flags().Int64Var(
 			&commonCfg.SecondaryCacheSize, "secondary-cache", 0, "secondary cache size in bytes")
 	}
-	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{rangeDelCmd, scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().Int64Var(
 			&commonCfg.CacheSize, "cache", 1<<30, "cache size")
 	}
-	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd, fsBenchCmd, writeBenchCmd} {
+	for _, cmd := range []*cobra.Command{rangeDelCmd, scanCmd, syncCmd, tombstoneCmd, ycsbCmd, fsBenchCmd, writeBenchCmd} {
 		cmd.Flags().DurationVarP(
 			&commonCfg.Duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
 	}
-	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{rangeDelCmd, scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().IntVarP(
 			&commonCfg.Concurrency, "concurrency", "c", 1, "number of concurrent workers")
 		cmd.Flags().BoolVar(

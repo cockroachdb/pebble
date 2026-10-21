@@ -58,6 +58,9 @@ type CommonConfig struct {
 	// benchmarks set this to a noop logger so Pebble's internal log messages
 	// don't pollute `go test -v` output.
 	Logger pebble.Logger
+
+	// OptionsHook adjusts benchmark options before defaults are filled in.
+	OptionsHook func(*pebble.Options)
 }
 
 // wait calls Wait(1) on the limiter if non-nil.

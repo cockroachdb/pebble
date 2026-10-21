@@ -109,6 +109,9 @@ func NewPebbleDB(dir string, cfg *CommonConfig) DB {
 	opts.ApplyTableFilterPolicy(func() pebble.DBTableFilterPolicy { return pebble.DBTableFilterPolicyProgressive })
 	opts.FlushSplitBytes = opts.TargetFileSizes[0]
 
+	if cfg.OptionsHook != nil {
+		cfg.OptionsHook(opts)
+	}
 	opts.EnsureDefaults()
 
 	if cfg.Verbose {
