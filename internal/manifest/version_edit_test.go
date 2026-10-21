@@ -582,6 +582,61 @@ func TestVersionEditDecode(t *testing.T) {
 		})
 }
 
+func TestReadBytes(t *testing.T) {
+	t.Run("empty input returns corruption error", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		versionEditEncoder{buf}.writeUvarint(4)
+		d := versionEditDecoder{bytes.NewReader(buf.Bytes())}
+		_, err := d.readBytes()
+		require.True(t, base.IsCorruptionError(err), "got %v", err)
+	})
+
+	t.Run("truncated input returns corruption error", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		e := versionEditEncoder{buf}
+		e.writeUvarint(4)
+		buf.WriteByte('x')
+		d := versionEditDecoder{bytes.NewReader(buf.Bytes())}
+		_, err := d.readBytes()
+		require.True(t, base.IsCorruptionError(err), "got %v", err)
+	})
+
+	t.Run("readBytes length out of range", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		versionEditEncoder{buf}.writeUvarint(uint64(1) << 63)
+		d := versionEditDecoder{bytes.NewReader(buf.Bytes())}
+		_, err := d.readBytes()
+		require.True(t, base.IsCorruptionError(err), "got %v", err)
+	})
+
+	t.Run("readBytesInto length out of range", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		versionEditEncoder{buf}.writeUvarint(uint64(1) << 63)
+		d := versionEditDecoder{bytes.NewReader(buf.Bytes())}
+		var sb scratchBuffer
+		_, err := d.readBytesInto(&sb)
+		require.True(t, base.IsCorruptionError(err), "got %v", err)
+	})
+
+	t.Run("multiple chunks", func(t *testing.T) {
+		payload := bytes.Repeat([]byte("abc"), 2000)
+		buf := new(bytes.Buffer)
+		versionEditEncoder{buf}.writeBytes(payload)
+		d := versionEditDecoder{bytes.NewReader(buf.Bytes())}
+		got, err := d.readBytes()
+		require.NoError(t, err)
+		require.Equal(t, payload, got)
+
+		buf.Reset()
+		versionEditEncoder{buf}.writeBytes(payload)
+		d = versionEditDecoder{bytes.NewReader(buf.Bytes())}
+		var sb scratchBuffer
+		got, err = d.readBytesInto(&sb)
+		require.NoError(t, err)
+		require.Equal(t, payload, got)
+	})
+}
+
 func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 	testCases := []struct {
 		edit    VersionEdit

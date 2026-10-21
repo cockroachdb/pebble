@@ -516,8 +516,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						if err != nil {
 							return err
 						}
-						blobReferences = make([]BlobReference, n)
-						for i := 0; i < int(n); i++ {
+						refs := make([]BlobReference, 0)
+						for range n {
 							fileID, err := d.readUvarint()
 							if err != nil {
 								return err
@@ -533,12 +533,13 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 									return err
 								}
 							}
-							blobReferences[i] = BlobReference{
+							refs = append(refs, BlobReference{
 								FileID:           base.BlobFileID(fileID),
 								ValueSize:        valueSize,
 								BackingValueSize: backingValueSize,
-							}
+							})
 						}
+						blobReferences = refs
 						continue
 
 					default:
@@ -1078,15 +1079,7 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := make([]byte, n)
-	_, err = io.ReadFull(d.byteReader, s)
-	if err != nil {
-		if err == io.ErrUnexpectedEOF {
-			return nil, base.CorruptionErrorf("pebble: corrupt manifest: failed to read %d bytes", n)
-		}
-		return nil, err
-	}
-	return s, nil
+	return d.appendN(nil, n)
 }
 
 // readBytesInto reads the next n bytes into the scratch buffer and returns a
@@ -1096,14 +1089,36 @@ func (d versionEditDecoder) readBytesInto(sb *scratchBuffer) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	buf := sb.New(int(n))
-	if _, err := io.ReadFull(d.byteReader, buf); err != nil {
-		if err == io.ErrUnexpectedEOF {
-			return nil, base.CorruptionErrorf("pebble: corrupt manifest: failed to read %d bytes", n)
-		}
+	start := len(*sb)
+	buf, err := d.appendN(*sb, n)
+	if err != nil {
 		return nil, err
 	}
-	return buf, nil
+	*sb = buf
+	return buf[start:], nil
+}
+
+func (d versionEditDecoder) appendN(dst []byte, n uint64) ([]byte, error) {
+	var tmp [4096]byte
+	var remaining uint64 = n
+	for remaining > 0 {
+		chunk := tmp[:]
+		if remaining < uint64(len(chunk)) {
+			chunk = chunk[:remaining]
+		}
+		nr, err := io.ReadFull(d.byteReader, chunk)
+		if nr > 0 {
+			dst = append(dst, chunk[:nr]...)
+		}
+		if err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				return nil, base.CorruptionErrorf("pebble: corrupt manifest: failed to read %d bytes", n)
+			}
+			return nil, err
+		}
+		remaining -= uint64(nr)
+	}
+	return dst, nil
 }
 
 func (d versionEditDecoder) readLevel() (int, error) {
