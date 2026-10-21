@@ -1066,7 +1066,9 @@ a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:5
 b#1,MERGE:1
 
-# NB: Zero values are skipped by deletable merger.
+# NB: Merges resolving to zero under the deletable merger surface as DELETE
+# tombstones (elided later by the usual means at the bottommost level);
+# eliding them inline would corrupt the iterator's skip state.
 define merger=deletable
 a#4,MERGE:-2
 a#3,MERGE:-1
@@ -1083,8 +1085,8 @@ first
 next
 next
 ----
-.
-.
+a#4,DEL:
+b#4,DEL:
 .
 
 # Test that range keys are interleaved and exposed by the iterator.
