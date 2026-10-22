@@ -559,6 +559,12 @@ func (wm *failoverManager) init(o Options, initial Logs) error {
 		o.timeSource = defaultTime{}
 	}
 	o.FailoverOptions.EnsureDefaults()
+	// Guard against invalid intervals reaching the monitor/prober goroutines.
+	// pebble.Open already validates via Options.Validate, but wal.Init and
+	// FailoverOptions are exported, so a direct caller can bypass Open.
+	if err := o.FailoverOptions.Validate(); err != nil {
+		return err
+	}
 
 	// Synchronously ensure that we're able to write to the secondary before we
 	// proceed. An operator doesn't want to encounter an issue writing to the

@@ -7,11 +7,13 @@ package wal
 import (
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -201,7 +203,9 @@ type FailoverOptions struct {
 	HealthyProbeLatencyThreshold time.Duration
 	// HealthyInterval is the time interval over which the probes have to be
 	// healthy. That is, we look at probe history of length
-	// HealthyInterval/PrimaryDirProbeInterval.
+	// HealthyInterval/PrimaryDirProbeInterval. The prober retains at most
+	// probeHistoryLength (128) samples, so HealthyInterval must be at most
+	// 128 x PrimaryDirProbeInterval; a larger value is rejected by Validate.
 	HealthyInterval time.Duration
 
 	// UnhealthySamplingInterval is the interval for sampling ongoing calls and
@@ -251,6 +255,61 @@ func (o *FailoverOptions) EnsureDefaults() {
 	if o.ElevatedWriteStallThresholdLag == 0 {
 		o.ElevatedWriteStallThresholdLag = 60 * time.Second
 	}
+}
+
+// Validate returns an error if the options are invalid. Validate is called on
+// the effective values, i.e., the values that will be used once EnsureDefaults
+// has been applied, so it is safe to call before or after EnsureDefaults.
+func (o FailoverOptions) Validate() error {
+	o.EnsureDefaults()
+	if o.PrimaryDirProbeInterval <= 0 {
+		return errors.Newf("PrimaryDirProbeInterval (%s) must be positive",
+			o.PrimaryDirProbeInterval)
+	}
+	if o.UnhealthySamplingInterval <= 0 {
+		return errors.Newf("UnhealthySamplingInterval (%s) must be positive",
+			o.UnhealthySamplingInterval)
+	}
+	if o.HealthyInterval <= 0 {
+		return errors.Newf("HealthyInterval (%s) must be positive", o.HealthyInterval)
+	}
+	if o.HealthyProbeLatencyThreshold <= 0 {
+		return errors.Newf("HealthyProbeLatencyThreshold (%s) must be positive",
+			o.HealthyProbeLatencyThreshold)
+	}
+	if o.ElevatedWriteStallThresholdLag <= 0 {
+		return errors.Newf("ElevatedWriteStallThresholdLag (%s) must be positive",
+			o.ElevatedWriteStallThresholdLag)
+	}
+	// dirProber.getMeanMax computes the number of samples it needs as
+	// (HealthyInterval+PrimaryDirProbeInterval-1)/PrimaryDirProbeInterval, i.e.
+	// ceil(HealthyInterval/PrimaryDirProbeInterval). When both intervals are
+	// huge (both expressible via time.ParseDuration), that addition overflows
+	// int64 and wraps to a small or negative samplesNeeded. Depending on the
+	// wrapped value, getMeanMax then either panics, or (worse) skips both of
+	// its assertion arms and reports a mean/max of zero, which makes the monitor
+	// immediately fail back to a possibly-stalled primary on every tick. Reject
+	// any configuration whose sum would overflow, so it never reaches the
+	// assertion.
+	if o.HealthyInterval > math.MaxInt64-o.PrimaryDirProbeInterval {
+		return errors.Newf(
+			"HealthyInterval (%s) is too large to combine with PrimaryDirProbeInterval (%s)",
+			o.HealthyInterval, o.PrimaryDirProbeInterval)
+	}
+	// Evaluate ceil(HealthyInterval/PrimaryDirProbeInterval) as
+	// (HealthyInterval-1)/PrimaryDirProbeInterval + 1. Both operands are known
+	// positive here and the overflow case above is already excluded, so this
+	// cannot overflow. The prober retains at most probeHistoryLength samples,
+	// one per PrimaryDirProbeInterval, so a HealthyInterval needing more than
+	// probeHistoryLength of them is unsatisfiable.
+	samplesNeeded := (o.HealthyInterval-1)/o.PrimaryDirProbeInterval + 1
+	if samplesNeeded > probeHistoryLength {
+		return errors.Newf(
+			"HealthyInterval (%s) must be <= %d x PrimaryDirProbeInterval (%s), i.e. <= %s",
+			o.HealthyInterval, probeHistoryLength, o.PrimaryDirProbeInterval,
+			time.Duration(probeHistoryLength)*o.PrimaryDirProbeInterval)
+	}
+	return nil
 }
 
 // EventListener is called on events, like log file creation.
