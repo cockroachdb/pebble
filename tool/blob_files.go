@@ -39,10 +39,21 @@ type blobFileMappings struct {
 // LoadValueBlobContext returns a TableBlobContext that configures a sstable
 // iterator to fetch the value stored in a blob file, using the mappings in this
 // blobFileMappings.
+//
+// If no blob references are known for the table (e.g. it is an obsolete sstable
+// left on disk that no manifest references), a warning is printed to stderr and
+// a context that prints blob handles rather than values is returned, so that a
+// full-directory scan can continue past the table instead of failing on it.
 func (m *blobFileMappings) LoadValueBlobContext(tableNum base.TableNum) sstable.TableBlobContext {
+	references, ok := m.references[tableNum]
+	if !ok {
+		fmt.Fprintf(m.stderr, "warning: no blob references found for table %s; "+
+			"printing blob handles instead of values\n", tableNum)
+		return sstable.DebugHandlesBlobContext
+	}
 	return sstable.TableBlobContext{
 		ValueFetcher: &m.fetcher,
-		References:   m.references[tableNum],
+		References:   references,
 	}
 }
 
