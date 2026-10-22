@@ -130,7 +130,18 @@ func newBlobFileMappings(
 					return err
 				}
 				for _, nf := range ve.NewTables {
-					mappings.references[nf.Meta.TableNum] = &nf.Meta.BlobReferences
+					// Key by the physical file number. A virtual table's values
+					// live in its backing file, which a scan identifies by its
+					// physical file number, so its references must be reachable
+					// under that number rather than the virtual table number.
+					// Every virtual table over a backing copies the backing's
+					// references index-for-index, so any one of them resolves the
+					// backing's handles correctly.
+					fileNum := nf.Meta.TableNum
+					if nf.Meta.Virtual {
+						fileNum = base.PhysicalTableFileNum(nf.BackingFileNum)
+					}
+					mappings.references[fileNum] = &nf.Meta.BlobReferences
 				}
 				// Accumulate all the physical file numbers ever used for each
 				// blob file ID. In the context of the debug tool, we don't want
