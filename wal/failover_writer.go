@@ -966,7 +966,10 @@ func (ww *failoverWriter) Metrics() record.LogWriterMetrics {
 	return ww.mu.metrics
 }
 
-// getLog can be called at any time, including after Close returns.
+// getLog can be called at any time, including after Close returns. Until Close
+// has returned, the segment of the latest LogWriter, which is the one records
+// are appended to, carries that LogWriter's flushed offset (see
+// segment.flushedOffset).
 func (ww *failoverWriter) getLog() logicalLogWithSizesEtc {
 	ww.mu.Lock()
 	defer ww.mu.Unlock()
@@ -984,6 +987,14 @@ func (ww *failoverWriter) getLog() logicalLogWithSizesEtc {
 				synchronouslyClosed: ww.mu.writers[i].synchronouslyClosed,
 			})
 		}
+	}
+	// A LogWriter is installed only if it is the latest writer at that moment,
+	// and the record queue keeps handing records to it until a newer writer is
+	// installed (see switchToNewSegment), so the last segment with a writer is
+	// the one being appended to.
+	if n := len(ll.segments); n > 0 && !ww.mu.closed {
+		s := &ll.segments[n-1].segment
+		s.flushedOffset = ww.mu.writers[s.logNameIndex].w.FlushedOffset
 	}
 	return ll
 }
