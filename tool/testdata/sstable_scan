@@ -505,7 +505,6 @@ sstable scan
 --load-blobs-from=./testdata/scan-virtual-backing-db
 ----
 000005.sst
-warning: no blob references found for table 000005; printing blob handles instead of values
-key0\x00#10,SET [(f0,blk0,id0,len6)]
-key1\x00#11,SET [(f0,blk0,id1,len6)]
-key2\x00#12,SET [(f0,blk0,id2,len6)]
+key0\x00#10,SET [76616c756530]
+key1\x00#11,SET [76616c756531]
+key2\x00#12,SET [76616c756532]
