@@ -400,12 +400,14 @@ func CopyAcrossFS(srcFS FS, oldname string, dstFS FS, newname string) error {
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
 
 	if _, err := io.Copy(dst, src); err != nil {
+		// Close the file to avoid leaking the descriptor; the copy error
+		// is more informative than a close error.
+		_ = dst.Close()
 		return err
 	}
-	return dst.Sync()
+	return errors.CombineErrors(dst.Sync(), dst.Close())
 }
 
 // LimitedCopy copies up to maxBytes from oldname to newname. If newname
@@ -421,12 +423,14 @@ func LimitedCopy(fs FS, oldname, newname string, maxBytes int64) error {
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
 
 	if _, err := io.Copy(dst, &io.LimitedReader{R: src, N: maxBytes}); err != nil {
+		// Close the file to avoid leaking the descriptor; the copy error
+		// is more informative than a close error.
+		_ = dst.Close()
 		return err
 	}
-	return dst.Sync()
+	return errors.CombineErrors(dst.Sync(), dst.Close())
 }
 
 // LinkOrCopy creates newname as a hard link to the oldname file. If creating

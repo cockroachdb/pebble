@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -279,6 +280,35 @@ func TestCopyCheckpointOptions(t *testing.T) {
 			return ""
 		}
 	})
+}
+
+// TestCopyCheckpointOptionsWriteError verifies that a failed copy inside
+// copyCheckpointOptions still closes the destination file. MemFS' Windows
+// semantics make Remove fail while a file is open, exposing a leaked
+// descriptor.
+func TestCopyCheckpointOptionsWriteError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	mem := vfs.NewMem()
+	mem.UseWindowsSemantics(true)
+
+	f, err := mem.Create("old", vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	_, err = io.WriteString(f, "[Options]\n  cleaner=delete\n")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	fs := errorfs.Wrap(mem, errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if op.Kind == errorfs.OpFileWrite && op.Path == "new" {
+			return errorfs.ErrInjected
+		}
+		return nil
+	}))
+
+	err = copyCheckpointOptions(fs, "old", "new")
+	require.ErrorIs(t, err, errorfs.ErrInjected)
+
+	// Fails if the copy error path left the destination file open.
+	require.NoError(t, fs.Remove("new"))
 }
 
 func TestCheckpoint(t *testing.T) {

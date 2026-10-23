@@ -513,6 +513,9 @@ func copyCheckpointOptions(fs vfs.FS, srcPath, dstPath string) error {
 	}
 	_, err = io.Copy(nf, &buf)
 	if err != nil {
+		// Close the file to avoid leaking the descriptor; the copy error
+		// is more informative than a close error.
+		_ = nf.Close()
 		return err
 	}
 	return errors.CombineErrors(nf.Sync(), nf.Close())
