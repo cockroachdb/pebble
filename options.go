@@ -1116,6 +1116,14 @@ type Options struct {
 		// obsolete file deletion (to make events deterministic).
 		testingAlwaysWaitForCleanup bool
 
+		// testingAfterEFOSAcquireIterStateFunc when non-nil, is called by
+		// EventuallyFileOnlySnapshot.acquireIterState after it has captured the
+		// state a new iterator or ScanInternal reads and released the EFOS's
+		// mutex, before the caller constructs the iterator. Used by tests to
+		// transition the EFOS to a file-only snapshot, and compact away the state
+		// it was protecting, within that window.
+		testingAfterEFOSAcquireIterStateFunc func()
+
 		// fsCloser holds a closer that should be invoked after a DB using these
 		// Options is closed. This is used to automatically stop the
 		// long-running goroutine associated with the disk-health-checking FS.
