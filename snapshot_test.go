@@ -241,6 +241,21 @@ func TestSnapshotClosed(t *testing.T) {
 	require.True(t, errors.Is(catch(func() { _, _, _ = snap.Get(nil) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { snap.NewIter(nil) }), ErrClosed))
 
+	for _, fileOnly := range []bool{true, false} {
+		if !fileOnly {
+			// The EFOS overlaps the memtable, so it is not file-only.
+			require.NoError(t, d.Set([]byte("a"), nil, nil))
+		}
+		efos := d.NewEventuallyFileOnlySnapshot([]KeyRange{{Start: []byte("a"), End: []byte("z")}})
+		require.Equal(t, fileOnly, efos.hasTransitioned())
+		require.NoError(t, efos.Close())
+		require.True(t, errors.Is(catch(func() { _, _, _ = efos.Get([]byte("a")) }), ErrClosed))
+		require.True(t, errors.Is(catch(func() { _, _ = efos.NewIter(nil) }), ErrClosed))
+		require.True(t, errors.Is(catch(func() {
+			_ = efos.ScanInternal(context.Background(), ScanInternalOptions{})
+		}), ErrClosed))
+	}
+
 	require.NoError(t, d.Close())
 }
 
@@ -448,4 +463,104 @@ func TestEFOSAndExciseRace(t *testing.T) {
 	waitForCh <- struct{}{}
 	// Wait for the snapshot checking to finish.
 	<-snapDone
+}
+
+// TestEFOSReadDuringTransition is a regression test for a race in
+// EventuallyFileOnlySnapshot.ScanInternal, which checked under es.mu that the
+// EFOS had not transitioned to a file-only snapshot, but loaded the DB's
+// current readState only after releasing es.mu. If the EFOS transitioned in
+// that window, compactions were no longer bound by its sequence number, and
+// the scan could read a version in which a compaction had rewritten keys
+// visible to the EFOS: here, dropping a key deleted after the EFOS was created
+// and zeroing the sequence number of a key written after it, which makes that
+// key visible to the EFOS.
+//
+// The testing hook flushes (transitioning the EFOS) and compacts within that
+// window, for each way of reading from an EFOS.
+func TestEFOSReadDuringTransition(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	readers := []struct {
+		name string
+		read func(t *testing.T, es *EventuallyFileOnlySnapshot) []string
+	}{
+		{
+			name: "ScanInternal",
+			read: func(t *testing.T, es *EventuallyFileOnlySnapshot) []string {
+				var kvs []string
+				require.NoError(t, es.ScanInternal(context.Background(), ScanInternalOptions{
+					VisitPointKey: func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
+						v, _, err := value.Value(nil)
+						if err != nil {
+							return err
+						}
+						kvs = append(kvs, fmt.Sprintf("%s=%s", key.UserKey, v))
+						return nil
+					},
+				}))
+				return kvs
+			},
+		},
+		{
+			name: "NewIter",
+			read: func(t *testing.T, es *EventuallyFileOnlySnapshot) []string {
+				iter, err := es.NewIter(nil)
+				require.NoError(t, err)
+				var kvs []string
+				for valid := iter.First(); valid; valid = iter.Next() {
+					kvs = append(kvs, fmt.Sprintf("%s=%s", iter.Key(), iter.Value()))
+				}
+				require.NoError(t, iter.Close())
+				return kvs
+			},
+		},
+	}
+	for _, r := range readers {
+		t.Run(r.name, func(t *testing.T) {
+			var hook func()
+			o := &Options{
+				FS:                          vfs.NewMem(),
+				DisableAutomaticCompactions: true,
+				FormatMajorVersion:          FormatNewest,
+				Logger:                      testutils.Logger{T: t},
+			}
+			o.private.testingAfterEFOSAcquireIterStateFunc = func() {
+				if fn := hook; fn != nil {
+					hook = nil
+					fn()
+				}
+			}
+			d, err := Open("", o)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, d.Close()) }()
+
+			require.NoError(t, d.Set([]byte("a"), []byte("a"), nil))
+			require.NoError(t, d.Set([]byte("b"), []byte("b"), nil))
+			require.NoError(t, d.Flush())
+			// x is in the memtable, so the EFOS is not file-only yet.
+			require.NoError(t, d.Set([]byte("x"), []byte("x"), nil))
+			es := d.NewEventuallyFileOnlySnapshot([]KeyRange{{Start: []byte("a"), End: []byte("z")}})
+			defer func() { require.NoError(t, es.Close()) }()
+			require.False(t, es.hasTransitioned())
+			// Writes the EFOS must not observe.
+			require.NoError(t, d.Delete([]byte("b"), nil))
+			require.NoError(t, d.Set([]byte("c"), []byte("c"), nil))
+
+			expected := []string{"a=a", "b=b", "x=x"}
+			hookRan := false
+			hook = func() {
+				hookRan = true
+				// The flush transitions the EFOS to a file-only snapshot, which
+				// unregisters its internal Snapshot. The compaction then merges
+				// the two overlapping L0 tables into L6 as if there were no
+				// snapshots, dropping b and zeroing the seqnum of c.
+				require.NoError(t, d.Flush())
+				require.True(t, es.hasTransitioned())
+				require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false /* parallelize */))
+			}
+			require.Equal(t, expected, r.read(t, es))
+			require.True(t, hookRan)
+			// A read that starts after the transition uses the file-only version.
+			require.Equal(t, expected, r.read(t, es))
+		})
+	}
 }
