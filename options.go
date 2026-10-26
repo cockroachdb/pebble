@@ -1243,6 +1243,14 @@ type Options struct {
 		// before calling DB.ingestApply.
 		testingBeforeIngestApplyFunc func()
 
+		// testingAfterEFOSAcquireIterStateFunc when non-nil, is called by
+		// EventuallyFileOnlySnapshot.acquireIterState after it has captured the
+		// state a new iterator or ScanInternal reads and released the EFOS's
+		// mutex, before the caller constructs the iterator. Used by tests to
+		// transition the EFOS to a file-only snapshot, and compact away the state
+		// it was protecting, within that window.
+		testingAfterEFOSAcquireIterStateFunc func()
+
 		// timeNow returns the current time. It defaults to time.Now. It's
 		// configurable here so that tests can mock the current time.
 		timeNow func() time.Time

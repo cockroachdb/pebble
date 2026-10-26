@@ -1038,12 +1038,12 @@ var iterAllocPool = sync.Pool{
 //   - Classic snapshot: Only `seqNum` is set. The latest readState will be used
 //     and the specified seqNum will be used as the snapshot seqNum.
 //   - EventuallyFileOnlySnapshot (EFOS) behaving as a classic snapshot. Only
-//     the `seqNum` is set. The latest readState will be used
-//     and the specified seqNum will be used as the snapshot seqNum.
+//     `seqNum` and `readState` are set. The readState was loaded while the
+//     EFOS still protected seqNum from compactions (see
+//     EventuallyFileOnlySnapshot.acquireIterState); it is referenced again by
+//     the iterator.
 //   - EFOS in file-only state: Only `seqNum` and `vers` are set. All the
 //     relevant SSTs are referenced by the *version.
-//   - EFOS that has been excised but is in alwaysCreateIters mode (tests only).
-//     Only `seqNum` and `readState` are set.
 type snapshotIterOpts struct {
 	seqNum    base.SeqNum
 	vers      *manifest.Version
