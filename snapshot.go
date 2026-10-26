@@ -329,6 +329,15 @@ func (es *EventuallyFileOnlySnapshot) hasTransitioned() bool {
 	return es.mu.vers != nil
 }
 
+func (es *EventuallyFileOnlySnapshot) isClosed() bool {
+	select {
+	case <-es.closed:
+		return true
+	default:
+		return false
+	}
+}
+
 // waitForFlush waits for a flush on any memtables that need to be flushed
 // before this EFOS can transition to a file-only snapshot. If this EFOS is
 // waiting on a flush of the mutable memtable, it forces a rotation within
@@ -448,22 +457,63 @@ func (es *EventuallyFileOnlySnapshot) NewIter(o *IterOptions) (*Iterator, error)
 func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 	ctx context.Context, o *IterOptions,
 ) (*Iterator, error) {
-	select {
-	case <-es.closed:
-		panic(ErrClosed)
-	default:
-	}
+	sOpts := es.acquireIterState()
+	defer releaseIterState(sOpts)
+	return es.db.newIter(ctx, nil /* batch */, newIterOpts{snapshot: sOpts}, o), nil
+}
 
+// acquireIterState returns the snapshotIterOpts that a new iterator over es
+// reads with: es's file-only version if es has transitioned to a file-only
+// snapshot, or otherwise the DB's current readState. The returned opts hold a
+// reference on that state, which the caller must release with
+// releaseIterState once it has constructed its iterator (which takes its own
+// reference).
+//
+// The state must be captured while es.mu is held. Until es transitions, it is
+// only es's internal Snapshot, registered with the DB, that prevents
+// compactions from rewriting the keys visible at es.seqNum. The transition,
+// which requires es.mu, unregisters that Snapshot, after which a compaction
+// may drop or zero the sequence numbers of such keys, and an excise may remove
+// protected state. A readState loaded after observing that es has not
+// transitioned, but after releasing es.mu, can reflect those changes.
+//
+// Panics with ErrClosed if es or its DB has been closed.
+func (es *EventuallyFileOnlySnapshot) acquireIterState() snapshotIterOpts {
+	// Check this before loading the readState, which the DB released when it
+	// was closed.
+	if err := es.db.closed.Load(); err != nil {
+		panic(err)
+	}
 	es.mu.Lock()
-	defer es.mu.Unlock()
-	if es.mu.vers != nil {
-		sOpts := snapshotIterOpts{seqNum: es.seqNum, vers: es.mu.vers}
-		return es.db.newIter(ctx, nil /* batch */, newIterOpts{snapshot: sOpts}, o), nil
+	// Close closes es.closed before acquiring es.mu to release es.mu.vers, so
+	// finding es open while holding es.mu guarantees that es.mu.vers has not
+	// been released yet.
+	if es.isClosed() {
+		es.mu.Unlock()
+		panic(ErrClosed)
 	}
-
 	sOpts := snapshotIterOpts{seqNum: es.seqNum}
-	iter := es.db.newIter(ctx, nil /* batch */, newIterOpts{snapshot: sOpts}, o)
-	return iter, nil
+	if es.mu.vers != nil {
+		es.mu.vers.Ref()
+		sOpts.vers = es.mu.vers
+	} else {
+		sOpts.readState = es.db.loadReadState()
+	}
+	es.mu.Unlock()
+	if fn := es.db.opts.private.testingAfterEFOSAcquireIterStateFunc; fn != nil {
+		fn()
+	}
+	return sOpts
+}
+
+// releaseIterState releases the reference that acquireIterState took on the
+// state sOpts reads.
+func releaseIterState(sOpts snapshotIterOpts) {
+	if sOpts.vers != nil {
+		sOpts.vers.Unref()
+	} else {
+		sOpts.readState.unref()
+	}
 }
 
 // ScanInternal scans all internal keys within the specified bounds, truncating
@@ -482,10 +532,6 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	visitSharedFile func(sst *SharedSSTMeta) error,
 	visitExternalFile func(sst *ExternalFile) error,
 ) error {
-	if es.db == nil {
-		panic(ErrClosed)
-	}
-	var sOpts snapshotIterOpts
 	opts := &scanInternalOptions{
 		category: category,
 		IterOptions: IterOptions{
@@ -499,18 +545,8 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 		visitSharedFile:   visitSharedFile,
 		visitExternalFile: visitExternalFile,
 	}
-	es.mu.Lock()
-	if es.mu.vers != nil {
-		sOpts = snapshotIterOpts{
-			seqNum: es.seqNum,
-			vers:   es.mu.vers,
-		}
-	} else {
-		sOpts = snapshotIterOpts{
-			seqNum: es.seqNum,
-		}
-	}
-	es.mu.Unlock()
+	sOpts := es.acquireIterState()
+	defer releaseIterState(sOpts)
 	iter, err := es.db.newInternalIter(ctx, sOpts, opts)
 	if err != nil {
 		return err
