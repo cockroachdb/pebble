@@ -39,10 +39,21 @@ type blobFileMappings struct {
 // LoadValueBlobContext returns a TableBlobContext that configures a sstable
 // iterator to fetch the value stored in a blob file, using the mappings in this
 // blobFileMappings.
+//
+// If no blob references are known for the table (e.g. it is an obsolete sstable
+// left on disk that no manifest references), a warning is printed to stderr and
+// a context that prints blob handles rather than values is returned, so that a
+// full-directory scan can continue past the table instead of failing on it.
 func (m *blobFileMappings) LoadValueBlobContext(tableNum base.TableNum) sstable.TableBlobContext {
+	references, ok := m.references[tableNum]
+	if !ok {
+		fmt.Fprintf(m.stderr, "warning: no blob references found for table %s; "+
+			"printing blob handles instead of values\n", tableNum)
+		return sstable.DebugHandlesBlobContext
+	}
 	return sstable.TableBlobContext{
 		ValueFetcher: &m.fetcher,
-		References:   m.references[tableNum],
+		References:   references,
 	}
 }
 
@@ -119,7 +130,18 @@ func newBlobFileMappings(
 					return err
 				}
 				for _, nf := range ve.NewTables {
-					mappings.references[nf.Meta.TableNum] = &nf.Meta.BlobReferences
+					// Key by the physical file number. A virtual table's values
+					// live in its backing file, which a scan identifies by its
+					// physical file number, so its references must be reachable
+					// under that number rather than the virtual table number.
+					// Every virtual table over a backing copies the backing's
+					// references index-for-index, so any one of them resolves the
+					// backing's handles correctly.
+					fileNum := nf.Meta.TableNum
+					if nf.Meta.Virtual {
+						fileNum = base.PhysicalTableFileNum(nf.BackingFileNum)
+					}
+					mappings.references[fileNum] = &nf.Meta.BlobReferences
 				}
 				// Accumulate all the physical file numbers ever used for each
 				// blob file ID. In the context of the debug tool, we don't want
