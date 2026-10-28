@@ -178,3 +178,62 @@ next
 a:1
 c:2
 .
+
+# A snapshot separates merge operands from their base. The newer operands
+# resolve to non-existence without the base, so the flush writes no record for
+# them and both readers see the older stripe's result.
+define merger=deletable
+set a 5
+merge a -1
+set b 1
+snapshot 1
+merge a 2
+merge a -2
+compact a-z
+----
+
+iter snapshot=1
+first
+next
+next
+----
+a:4
+b:1
+.
+
+iter
+first
+next
+next
+----
+a:4
+b:1
+.
+
+# The older stripe resolves to non-existence with its base, so it is absent at
+# the snapshot. The newer operands are merged on top of it.
+define merger=deletable
+set a 5
+merge a -5
+set b 1
+snapshot 1
+merge a 2
+merge a 3
+compact a-z
+----
+
+iter snapshot=1
+first
+next
+----
+b:1
+.
+
+iter
+first
+next
+next
+----
+a:5
+b:1
+.

@@ -1066,9 +1066,7 @@ a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:5
 b#1,MERGE:1
 
-# NB: Merges resolving to zero under the deletable merger surface as DELETE
-# tombstones (elided later by the usual means at the bottommost level);
-# eliding them inline would corrupt the iterator's skip state.
+# NB: Zero values are skipped by deletable merger.
 define merger=deletable
 a#4,MERGE:-2
 a#3,MERGE:-1
@@ -1085,8 +1083,130 @@ first
 next
 next
 ----
-a#4,DEL:
-b#4,DEL:
+.
+.
+.
+
+# A merge that consumes its base SET and resolves to non-existence becomes a
+# DEL. The consumed SET and the rest of the stripe are skipped.
+define merger=deletable
+a#3,MERGE:-2
+a#2,SET:2
+a#1,SET:7
+b#2,SET:5
+----
+
+iter
+first
+next
+next
+----
+a#3,DEL:
+b#2,SET:5
+.
+
+# A merge that consumes a DEL and resolves to non-existence becomes a DEL.
+define merger=deletable
+a#3,MERGE:-2
+a#2,MERGE:2
+a#1,DEL:
+b#2,SET:5
+----
+
+iter
+first
+next
+next
+----
+a#3,DEL:
+b#2,SET:5
+.
+
+# Operands that resolve to non-existence without the base produce no record.
+# The next key is a DEL, which sets skip=true when it is returned.
+define merger=deletable
+a#3,MERGE:-2
+a#2,MERGE:2
+b#2,DEL:
+c#1,SET:1
+----
+
+iter
+first
+next
+next
+----
+b#2,DEL:
+c#1,SET:1
+.
+
+# A snapshot separates the operands from their base. The newer stripe resolves
+# to non-existence and produces no record. The older stripe is merged with its
+# base.
+define merger=deletable
+a#4,MERGE:-2
+a#3,MERGE:2
+a#2,MERGE:-1
+a#1,SET:5
+b#1,SET:1
+----
+
+iter snapshots=3
+first
+next
+next
+----
+a#2,SET:4
+b#1,SET:1
+.
+
+# The older stripe resolves to non-existence with its base, so it becomes a
+# DEL. The newer stripe is merged without its base.
+define merger=deletable
+a#4,MERGE:3
+a#3,MERGE:2
+a#2,MERGE:-5
+a#1,SET:5
+b#1,SET:1
+----
+
+iter snapshots=3
+first
+next
+next
+next
+----
+a#4,MERGE:5
+a#2,DEL:
+b#1,SET:1
+.
+
+# At the bottom of the LSM, a merge that resolves to non-existence produces no
+# record when tombstones can be elided, and a DEL when they cannot.
+define merger=deletable
+a#3,MERGE:-2
+a#2,MERGE:2
+b#4,MERGE:-2
+b#3,SET:2
+c#2,SET:5
+----
+
+iter is-bottommost-layer=true elide-tombstones=true
+first
+next
+----
+c#0,SET:5
+.
+
+iter is-bottommost-layer=true elide-tombstones=false
+first
+next
+next
+next
+----
+a#0,DEL:
+b#0,DEL:
+c#0,SET:5
 .
 
 # Test that range keys are interleaved and exposed by the iterator.
