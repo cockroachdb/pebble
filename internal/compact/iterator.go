@@ -647,7 +647,8 @@ func (i *Iter) Next() *base.InternalKV {
 			if i.err == nil {
 				i.mergeNext(valueMerger)
 			}
-			var needDelete bool
+			needDelete := false
+			includesBase := false
 			if i.err == nil {
 				// If this is the oldest version of this key (the bottommost
 				// snapshot stripe), we can transform the sequence number to
@@ -667,7 +668,6 @@ func (i *Iter) Next() *base.InternalKV {
 
 				// includesBase is true when we've merged the oldest operand in
 				// the LSM.
-				var includesBase bool
 				switch i.kv.K.Kind() {
 				case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
 					includesBase = true
@@ -683,21 +683,35 @@ func (i *Iter) Next() *base.InternalKV {
 					if i.closeValueCloser() != nil {
 						return nil
 					}
-					// The merged result is non-existent. Eliding it inline via
-					// `continue` would re-enter the iteration loop without the
-					// skip/position bookkeeping the returned-key path performs:
-					// if mergeNext consumed a base SET/DEL in this stripe it
-					// set skip=true, and continuing with that state pending
-					// re-processes entries the merge already consumed and trips
-					// the "compaction iterator has skip=true, but iterator is
-					// at iterPosNext" assertion on a later Next (see
-					// TestCompactionDeletableMergerStress). Instead, surface
-					// the non-existent result as a DELETE tombstone through
-					// the normal return path, which maintains the iterator
-					// invariants; the tombstone is elided by the usual means
-					// on a later bottommost compaction.
+					if !includesBase {
+						// The operands resolve to non-existence without the
+						// base. They produce no record, and older entries for
+						// the key stay visible. mergeNext stopped on the next
+						// stripe or user key, or at the end of the input, and
+						// the loop continues from there.
+						i.pos = iterPosCurForward
+						continue
+					}
+					// The merge includes the base, so the key does not exist
+					// at this sequence number.
+					if origSnapshotIdx == 0 && i.delElider.ShouldElide(i.kv.K.UserKey) {
+						// Nothing older exists for the key, so no record is
+						// needed. This is the key's oldest stripe, so the loop
+						// continues with the next user key or ends.
+						if i.skip {
+							// mergeNext consumed a SET or DEL and the iterator
+							// is still on it. Skip it and the rest of the stripe.
+							i.skipInStripe()
+						}
+						i.pos = iterPosCurForward
+						continue
+					}
+					// A tombstone shadows older entries in older stripes and
+					// lower levels. If mergeNext consumed a SET or DEL,
+					// skip=true makes the next call skip the rest of the
+					// stripe.
 					i.kv.K.SetKind(base.InternalKeyKindDelete)
-					i.kv.V = base.MakeInPlaceValue(nil)
+					i.kv.V = base.InternalValue{}
 					return &i.kv
 				}
 				return &i.kv

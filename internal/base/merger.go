@@ -61,13 +61,17 @@ type ValueMerger interface {
 }
 
 // DeletableValueMerger is an extension to ValueMerger which allows indicating that the
-// result of a merge operation is non-existent. Such non-existent entries will eventually
-// be deleted during compaction. Note that during compaction, non-existence of the result
-// of a merge means that the merge operands will not result in any record being output.
-// This is not the same as transforming the merge operands into a deletion tombstone, as
-// older merge operands will still be visible during iteration. Deletion of the merge operands
-// in this way is akin to the way a SingleDelete+Set combine into non-existence while leaving
-// older records for the same key unaffected.
+// result of a merge operation is non-existent. Reads treat a non-existent result as a
+// missing key.
+//
+// During compaction, what a non-existent result produces depends on includesBase:
+//   - If includesBase is false, the merge covered only some of the key's operands. These
+//     operands produce no record, and older records for the same key stay visible. A
+//     merger should report non-existence here only when the operands leave any older
+//     value unchanged.
+//   - If includesBase is true, the key does not exist as of the merge's sequence number.
+//     The compaction writes a deletion tombstone that shadows older records, or writes
+//     nothing when no older record for the key can exist.
 type DeletableValueMerger interface {
 	ValueMerger
 
