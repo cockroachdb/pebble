@@ -365,10 +365,13 @@ func NewIter(
 		i.rangeKeyInterleaving.Init(cfg.Comparer, iter, rangeKeyIter, keyspan.InterleavingIterOpts{})
 		iter = &i.rangeKeyInterleaving
 	}
+	// Check whether the underlying iterator supports KVMeta before
+	// MaybeWrapIfInvariants, since invalidating.iter implements
+	// InternalIteratorWithKVMeta unconditionally.
+	_, hasMeta := iter.(base.InternalIteratorWithKVMeta)
 	i.iter = invalidating.MaybeWrapIfInvariants(iter)
-
-	if metaIter, ok := i.iter.(base.InternalIteratorWithKVMeta); ok {
-		i.metaIter = metaIter
+	if hasMeta {
+		i.metaIter = i.iter.(base.InternalIteratorWithKVMeta)
 	}
 
 	i.frontiers.Init(i.cmp)

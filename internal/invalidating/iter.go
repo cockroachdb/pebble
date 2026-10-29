@@ -26,10 +26,14 @@ func MaybeWrapIfInvariants(iter base.InternalIterator) base.InternalIterator {
 // returned key/value to all 1s.
 type iter struct {
 	iter        base.InternalIterator
+	metaIter    base.InternalIteratorWithKVMeta
 	lastKV      *base.InternalKV
 	ignoreKinds [base.InternalKeyKindMax + 1]bool
 	err         error
 }
+
+var _ base.TopLevelIterator = (*iter)(nil)
+var _ base.InternalIteratorWithKVMeta = (*iter)(nil)
 
 // Option configures the behavior of an invalidating iterator.
 type Option interface {
@@ -54,7 +58,8 @@ func IgnoreKinds(kinds ...base.InternalKeyKind) Option {
 // NewIter constructs a new invalidating iterator that wraps the provided
 // iterator, trashing buffers for previously returned keys.
 func NewIter(originalIterator base.InternalIterator, opts ...Option) base.TopLevelIterator {
-	i := &iter{iter: originalIterator}
+	metaIter, _ := originalIterator.(base.InternalIteratorWithKVMeta)
+	i := &iter{iter: originalIterator, metaIter: metaIter}
 	for _, opt := range opts {
 		opt.apply(i)
 	}
@@ -113,6 +118,14 @@ func (i *iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	return i.update(i.iter.SeekGE(key, flags))
 }
 
+func (i *iter) SeekGEWithMeta(key []byte, flags base.SeekGEFlags) (*base.InternalKV, base.KVMeta) {
+	if i.metaIter != nil {
+		kv, meta := i.metaIter.SeekGEWithMeta(key, flags)
+		return i.update(kv), meta
+	}
+	return i.SeekGE(key, flags), base.KVMeta{}
+}
+
 func (i *iter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	return i.update(i.iter.SeekPrefixGE(prefix, key, flags))
 }
@@ -129,12 +142,28 @@ func (i *iter) First() *base.InternalKV {
 	return i.update(i.iter.First())
 }
 
+func (i *iter) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	if i.metaIter != nil {
+		kv, meta := i.metaIter.FirstWithMeta()
+		return i.update(kv), meta
+	}
+	return i.First(), base.KVMeta{}
+}
+
 func (i *iter) Last() *base.InternalKV {
 	return i.update(i.iter.Last())
 }
 
 func (i *iter) Next() *base.InternalKV {
 	return i.update(i.iter.Next())
+}
+
+func (i *iter) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	if i.metaIter != nil {
+		kv, meta := i.metaIter.NextWithMeta()
+		return i.update(kv), meta
+	}
+	return i.Next(), base.KVMeta{}
 }
 
 func (i *iter) Prev() *base.InternalKV {
