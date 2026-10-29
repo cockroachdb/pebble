@@ -593,6 +593,729 @@ func TestMergerClosing(t *testing.T) {
 	require.True(t, m.closed)
 }
 
+var errTestMergeFailure = errors.New("test merge failure")
+
+type selectiveFailValueMerger struct {
+	base.AppendValueMerger
+	failFinish bool
+}
+
+func (m *selectiveFailValueMerger) checkOperand(value []byte) error {
+	if bytes.HasPrefix(value, []byte("!finish")) {
+		m.failFinish = true
+	} else if bytes.HasPrefix(value, []byte("!")) {
+		return errTestMergeFailure
+	}
+	return nil
+}
+
+func (m *selectiveFailValueMerger) MergeNewer(value []byte) error {
+	if err := m.checkOperand(value); err != nil {
+		return err
+	}
+	return m.AppendValueMerger.MergeNewer(value)
+}
+
+func (m *selectiveFailValueMerger) MergeOlder(value []byte) error {
+	if err := m.checkOperand(value); err != nil {
+		return err
+	}
+	return m.AppendValueMerger.MergeOlder(value)
+}
+
+func (m *selectiveFailValueMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	if m.failFinish {
+		return nil, nil, errTestMergeFailure
+	}
+	return m.AppendValueMerger.Finish(includesBase)
+}
+
+// failOnBackgroundErrorListener returns a logging EventListener that fails the
+// test on any BackgroundError.
+func failOnBackgroundErrorListener(t *testing.T) *EventListener {
+	el := MakeLoggingEventListener(testutils.Logger{T: t})
+	el.BackgroundError = func(err error) {
+		t.Errorf("unexpected BackgroundError: %v", err)
+	}
+	return &el
+}
+
+// TestMergeFailureContainedToKey verifies that when a merge operator fails on a
+// key's operands during flush or compaction, the operands are written out
+// uncombined (and not collapsed at the bottommost level) instead of failing the
+// flush or compaction, while reads of that key continue to return the merge
+// error and healthy keys remain readable.
+func TestMergeFailureContainedToKey(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	memFS := vfs.NewMem()
+	merger := &Merger{
+		Name: "selective-fail-merger",
+		Merge: func(key, value []byte) (ValueMerger, error) {
+			if bytes.HasPrefix(value, []byte("!init")) {
+				return nil, errTestMergeFailure
+			}
+			m := &selectiveFailValueMerger{}
+			if bytes.HasPrefix(value, []byte("!finish")) {
+				m.failFinish = true
+			}
+			if err := m.AppendValueMerger.MergeNewer(value); err != nil {
+				return nil, err
+			}
+			return m, nil
+		},
+	}
+
+	makeOpts := func() *Options {
+		return &Options{
+			FS:                          memFS,
+			Merger:                      merger,
+			DisableAutomaticCompactions: true,
+			Logger:                      testutils.Logger{T: t},
+			EventListener:               failOnBackgroundErrorListener(t),
+		}
+	}
+
+	d, err := Open("", makeOpts())
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	// Healthy key "a".
+	require.NoError(t, d.Set([]byte("a"), []byte("va"), nil))
+	require.NoError(t, d.Merge([]byte("a"), []byte("+1"), nil))
+	require.NoError(t, d.Merge([]byte("a"), []byte("+2"), nil))
+
+	// "k1": fails in Merge (initial operand).
+	require.NoError(t, d.Set([]byte("k1"), []byte("base1"), nil))
+	require.NoError(t, d.Merge([]byte("k1"), []byte("+m1"), nil))
+	require.NoError(t, d.Merge([]byte("k1"), []byte("!init"), nil))
+
+	// "k2": fails in MergeOlder (or MergeNewer during reverse iteration).
+	require.NoError(t, d.Set([]byte("k2"), []byte("base2"), nil))
+	require.NoError(t, d.Merge([]byte("k2"), []byte("!older"), nil))
+	require.NoError(t, d.Merge([]byte("k2"), []byte("+m2"), nil))
+
+	// "k3": fails in Finish.
+	require.NoError(t, d.Set([]byte("k3"), []byte("base3"), nil))
+	require.NoError(t, d.Merge([]byte("k3"), []byte("!finish"), nil))
+	require.NoError(t, d.Merge([]byte("k3"), []byte("+m3"), nil))
+
+	// "k4": only MERGE operands (no base SET), fails in MergeOlder/MergeNewer.
+	require.NoError(t, d.Merge([]byte("k4"), []byte("+m4"), nil))
+	require.NoError(t, d.Merge([]byte("k4"), []byte("!older"), nil))
+	require.NoError(t, d.Merge([]byte("k4"), []byte("+m4b"), nil))
+
+	// Healthy key "z".
+	require.NoError(t, d.Set([]byte("z"), []byte("vz"), nil))
+
+	checkReads := func(expectedA string) {
+		t.Helper()
+		verifyGet(t, d, []byte("a"), []byte(expectedA))
+		verifyGet(t, d, []byte("z"), []byte("vz"))
+		for _, k := range []string{"k1", "k2", "k3", "k4"} {
+			_, closer, err := d.Get([]byte(k))
+			require.ErrorIs(t, err, errTestMergeFailure, "key %s", k)
+			require.Nil(t, closer)
+		}
+	}
+
+	// Verify reads from memtable before flush.
+	checkReads("va+1+2")
+
+	// Flush must succeed and emit the failing keys' MERGE operands uncombined.
+	require.NoError(t, d.Flush())
+	require.Equal(t, uint64(4), d.Metrics().Keys.MergeFailuresCount)
+	checkReads("va+1+2")
+	var stats CheckLevelsStats
+	require.NoError(t, d.CheckLevels(&stats))
+	require.Equal(t, 4, stats.MergeFailures)
+
+	// Write additional operands to WAL/memtable, then close and reopen DB to
+	// verify WAL replay + subsequent flush and compaction.
+	require.NoError(t, d.Merge([]byte("a"), []byte("+3"), nil))
+	require.NoError(t, d.Merge([]byte("k2"), []byte("+m2b"), nil))
+	require.NoError(t, d.Close())
+	d = nil
+
+	d, err = Open("", makeOpts())
+	require.NoError(t, err)
+	checkReads("va+1+2+3")
+
+	require.NoError(t, d.Flush())
+	checkReads("va+1+2+3")
+
+	// Compact everything down to the bottommost level (L6).
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z\x00"), false /* parallelize */))
+	require.Equal(t, uint64(4), d.Metrics().Keys.MergeFailuresCount)
+	checkReads("va+1+2+3")
+	stats = CheckLevelsStats{}
+	require.NoError(t, d.CheckLevels(&stats))
+	require.Equal(t, 4, stats.MergeFailures)
+
+	// Inspect the bottommost level SSTable to verify that:
+	// - "a" was collapsed into a single SET#0,
+	// - "k1", "k2", "k3", "k4" still have their MERGE operands uncombined at
+	//   non-zero sequence numbers, and "k4" was not collapsed to SET.
+	d.mu.Lock()
+	cur := d.mu.versions.currentVersion()
+	d.mu.Unlock()
+	bottomLevel := cur.Levels[numLevels-1]
+	require.False(t, bottomLevel.Empty())
+	var gotKeys []string
+	for f := range bottomLevel.All() {
+		iters, err := d.newIters(context.Background(), f, nil, internalIterOpts{}, iterPointKeys)
+		require.NoError(t, err)
+		for kv := iters.point.First(); kv != nil; kv = iters.point.Next() {
+			val, _, err := kv.Value(nil)
+			require.NoError(t, err)
+			if kv.K.Kind() == InternalKeyKindMerge {
+				require.NotZero(t, kv.K.SeqNum(), "uncombined MERGE operand must retain non-zero seqnum: %s", kv.K)
+			}
+			gotKeys = append(gotKeys, fmt.Sprintf("%s#%t,%s:%s",
+				kv.K.UserKey, kv.K.SeqNum() > 0, kv.K.Kind(), val))
+		}
+		require.NoError(t, iters.point.Error())
+		require.NoError(t, iters.CloseAll())
+	}
+	expectedBottomKeys := []string{
+		"a#false,SET:va+1+2+3",
+		"k1#true,MERGE:!init",
+		"k1#true,MERGE:+m1",
+		"k1#false,SET:base1",
+		"k2#true,MERGE:+m2b",
+		"k2#true,MERGE:+m2",
+		"k2#true,MERGE:!older",
+		"k2#false,SET:base2",
+		"k3#true,MERGE:+m3",
+		"k3#true,MERGE:!finish",
+		"k3#false,SET:base3",
+		"k4#true,MERGE:+m4b",
+		"k4#true,MERGE:!older",
+		"k4#true,MERGE:+m4",
+		"z#false,SET:vz",
+	}
+	require.Equal(t, expectedBottomKeys, gotKeys)
+
+	// Verify forward and reverse user iteration surfaces the merge error on
+	// the failing keys while allowing seeks to healthy keys.
+	iter, err := d.NewIter(nil)
+	require.NoError(t, err)
+	require.True(t, iter.First())
+	require.Equal(t, "a", string(iter.Key()))
+	require.Equal(t, "va+1+2+3", string(iter.Value()))
+	require.False(t, iter.Next())
+	require.ErrorIs(t, iter.Error(), errTestMergeFailure)
+	require.True(t, iter.SeekGE([]byte("z")))
+	require.Equal(t, "z", string(iter.Key()))
+	require.Equal(t, "vz", string(iter.Value()))
+	require.False(t, iter.Prev())
+	require.ErrorIs(t, iter.Error(), errTestMergeFailure)
+	require.ErrorIs(t, iter.Close(), errTestMergeFailure)
+
+	// Deleting the failing keys and compacting removes the bad operands and
+	// restores clean iteration across the entire keyspace.
+	require.NoError(t, d.Delete([]byte("k1"), nil))
+	require.NoError(t, d.Delete([]byte("k2"), nil))
+	require.NoError(t, d.DeleteRange([]byte("k3"), []byte("k5"), nil))
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z\x00"), false /* parallelize */))
+
+	for _, k := range []string{"k1", "k2", "k3", "k4"} {
+		verifyGetNotFound(t, d, []byte(k))
+	}
+	verifyGet(t, d, []byte("a"), []byte("va+1+2+3"))
+	verifyGet(t, d, []byte("z"), []byte("vz"))
+
+	iter, err = d.NewIter(nil)
+	require.NoError(t, err)
+	require.True(t, iter.First())
+	require.Equal(t, "a", string(iter.Key()))
+	require.True(t, iter.Next())
+	require.Equal(t, "z", string(iter.Key()))
+	require.False(t, iter.Next())
+	require.NoError(t, iter.Error())
+	require.NoError(t, iter.Close())
+
+	stats = CheckLevelsStats{}
+	require.NoError(t, d.CheckLevels(&stats))
+	require.Equal(t, 0, stats.MergeFailures)
+}
+
+// TestMergeFailureOutputSplitting verifies that when a compaction splits output
+// sstables using a tiny TargetFileSize while emitting uncombined MERGE operands
+// for failing keys, a single user key's buffered operands are never split
+// across two output sstables.
+func TestMergeFailureOutputSplitting(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	merger := &Merger{
+		Name: "selective-fail-merger",
+		Merge: func(key, value []byte) (ValueMerger, error) {
+			if bytes.HasPrefix(value, []byte("!init")) {
+				return nil, errTestMergeFailure
+			}
+			m := &selectiveFailValueMerger{}
+			if err := m.AppendValueMerger.MergeNewer(value); err != nil {
+				return nil, err
+			}
+			return m, nil
+		},
+	}
+
+	opts := &Options{
+		FS:                          vfs.NewMem(),
+		Merger:                      merger,
+		DisableAutomaticCompactions: true,
+		Logger:                      testutils.Logger{T: t},
+		EventListener:               failOnBackgroundErrorListener(t),
+		TargetFileSizes:             [numLevels]int64{1, 1, 1, 1, 1, 1, 1},
+	}
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	const numKeys = 20
+	pad := bytes.Repeat([]byte("x"), 128)
+	for i := range numKeys {
+		k := fmt.Appendf(nil, "k%02d", i)
+		require.NoError(t, d.Set(k, pad, nil))
+		require.NoError(t, d.Merge(k, append([]byte("!older:"), pad...), nil))
+		require.NoError(t, d.Merge(k, append([]byte("+m1:"), pad...), nil))
+		require.NoError(t, d.Merge(k, append([]byte("+m2:"), pad...), nil))
+	}
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact(context.Background(), []byte("k00"), []byte("k99"), false /* parallelize */))
+
+	var stats CheckLevelsStats
+	require.NoError(t, d.CheckLevels(&stats))
+	require.Equal(t, numKeys, stats.MergeFailures)
+
+	d.mu.Lock()
+	cur := d.mu.versions.currentVersion()
+	d.mu.Unlock()
+	bottomLevel := cur.Levels[numLevels-1]
+	require.Greater(t, bottomLevel.Len(), 1)
+	var prevLargest []byte
+	for f := range bottomLevel.All() {
+		if prevLargest != nil {
+			require.Less(t, d.opts.Comparer.Compare(prevLargest, f.Smallest().UserKey), 0,
+				"user key %q split across two L6 tables", f.Smallest().UserKey)
+		}
+		prevLargest = slices.Clone(f.Largest().UserKey)
+	}
+}
+
+// randomFailMerger injects non-corruption errors into a random subset of Merger
+// calls. Every Merger call (from flushes, compactions, reads, and the
+// CheckLevels runs triggered by DebugCheckLevels) draws from the same rng, so a
+// seed reproduces a run only because the test disables automatic compactions
+// and performs every flush, compaction, and read synchronously from a single
+// goroutine. Any background work that invokes the Merger would break
+// reproducibility.
+type randomFailMerger struct {
+	mu           sync.Mutex
+	rng          *rand.Rand
+	injectErrors atomic.Bool
+}
+
+func (m *randomFailMerger) shouldFail() bool {
+	if !m.injectErrors.Load() {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.rng.IntN(6) == 0
+}
+
+type randomFailValueMerger struct {
+	base.AppendValueMerger
+	parent *randomFailMerger
+}
+
+func (m *randomFailValueMerger) MergeNewer(value []byte) error {
+	if m.parent.shouldFail() {
+		return errTestMergeFailure
+	}
+	return m.AppendValueMerger.MergeNewer(value)
+}
+
+func (m *randomFailValueMerger) MergeOlder(value []byte) error {
+	if m.parent.shouldFail() {
+		return errTestMergeFailure
+	}
+	return m.AppendValueMerger.MergeOlder(value)
+}
+
+func (m *randomFailValueMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	if m.parent.shouldFail() {
+		return nil, nil, errTestMergeFailure
+	}
+	return m.AppendValueMerger.Finish(includesBase)
+}
+
+// TestMergeFailureRandomCompactions runs a randomized workload with a Merger
+// that injects random non-corruption errors across flushes and random
+// compactions, followed by a final full compaction with no errors, and
+// cross-checks the result against a reference DB that flushes the same
+// operations in the same order and compacts them once. Snapshots are opened on
+// both DBs at the same points, and before each snapshot is closed the two DBs
+// are cross-checked (with error injection disabled) both at the snapshot and at
+// the latest state, while uncombined MERGE operands may still be present
+// across levels.
+func TestMergeFailureRandomCompactions(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	seed := rand.Uint64()
+	t.Logf("seed: %d", seed)
+
+	keys := [][]byte{
+		[]byte("a"), []byte("b"), []byte("c"), []byte("d"),
+		[]byte("e"), []byte("f"), []byte("g"), []byte("h"),
+	}
+	maxKeyEnd := append(slices.Clone(keys[len(keys)-1]), 0)
+	sentinelLo := []byte("0")
+	sentinelHi := []byte("z")
+
+	// scanAll returns all visible key/value pairs in r in forward or reverse
+	// order.
+	scanAll := func(r Reader, reverse bool) []string {
+		iter, err := r.NewIter(nil)
+		require.NoError(t, err)
+		first, step := iter.First, iter.Next
+		if reverse {
+			first, step = iter.Last, iter.Prev
+		}
+		var res []string
+		for ok := first(); ok; ok = step() {
+			res = append(res, fmt.Sprintf("%s:%s", iter.Key(), iter.Value()))
+		}
+		require.NoError(t, iter.Error())
+		require.NoError(t, iter.Close())
+		return res
+	}
+	// checkReadersEqual cross-checks point lookups and forward and reverse
+	// iteration between rErr and rClean.
+	checkReadersEqual := func(rErr, rClean Reader, desc string) {
+		for _, k := range keys {
+			valErr, closerErr, err1 := rErr.Get(k)
+			valClean, closerClean, err2 := rClean.Get(k)
+			require.Equal(t, err2, err1, "%s key %s", desc, k)
+			if err1 == nil {
+				require.Equal(t, string(valClean), string(valErr), "%s key %s", desc, k)
+				require.NoError(t, closerErr.Close())
+				require.NoError(t, closerClean.Close())
+			}
+		}
+		require.Equal(t, scanAll(rClean, false), scanAll(rErr, false), "%s forward scan", desc)
+		require.Equal(t, scanAll(rClean, true), scanAll(rErr, true), "%s reverse scan", desc)
+	}
+
+	const numTrials = 10
+	var totalMergeFailures, totalCompactionMergeFailures uint64
+	for trial := range numTrials {
+		rng := rand.New(rand.NewPCG(seed, uint64(trial)))
+		rfm := &randomFailMerger{
+			rng: rand.New(rand.NewPCG(seed, uint64(trial)+1000)),
+		}
+		rfm.injectErrors.Store(true)
+
+		errMerger := &Merger{
+			Name: base.DefaultMerger.Name,
+			Merge: func(key, value []byte) (ValueMerger, error) {
+				if rfm.shouldFail() {
+					return nil, errTestMergeFailure
+				}
+				vm := &randomFailValueMerger{parent: rfm}
+				if err := vm.AppendValueMerger.MergeNewer(value); err != nil {
+					return nil, err
+				}
+				return vm, nil
+			},
+		}
+
+		openDB := func(merger *Merger) *DB {
+			el := failOnBackgroundErrorListener(t)
+			// The workload only issues SINGLEDELs that satisfy the SINGLEDEL
+			// contract, so a SINGLEDEL misuse report indicates a bug.
+			el.PossibleAPIMisuse = func(info PossibleAPIMisuseInfo) {
+				switch info.Kind {
+				case IneffectualSingleDelete, NondeterministicSingleDelete:
+					t.Errorf("unexpected PossibleAPIMisuse: %s", info)
+				}
+			}
+			d, err := Open("", &Options{
+				FS:                          vfs.NewMem(),
+				Merger:                      merger,
+				FormatMajorVersion:          FormatNewest,
+				LBaseMaxBytes:               1,
+				L0StopWritesThreshold:       1000,
+				DisableAutomaticCompactions: true,
+				DisableTableStats:           true,
+				DebugCheck:                  DebugCheckLevels,
+				Logger:                      testutils.Logger{T: t},
+				EventListener:               el,
+			})
+			require.NoError(t, err)
+			return d
+		}
+
+		dError := openDB(errMerger)
+		dClean := openDB(base.DefaultMerger)
+
+		// snapPair holds snapshots of dError and dClean taken at the same
+		// sequence number.
+		type snapPair struct {
+			err, clean *Snapshot
+		}
+		var snaps []snapPair
+		// The happy path closes all snapshots and DBs explicitly; this cleanup
+		// only runs after a test failure, so it ignores errors to avoid masking
+		// the original failure.
+		defer func() {
+			for _, s := range snaps {
+				_ = s.err.Close()
+				_ = s.clean.Close()
+			}
+			if dError != nil {
+				_ = dError.Close()
+			}
+			if dClean != nil {
+				_ = dClean.Close()
+			}
+		}()
+
+		// closeSnap cross-checks the DBs at snaps[idx] and at the latest state
+		// with error injection disabled, and then closes snaps[idx].
+		closeSnap := func(idx int, desc string) {
+			rfm.injectErrors.Store(false)
+			defer rfm.injectErrors.Store(true)
+			s := snaps[idx]
+			checkReadersEqual(s.err, s.clean, fmt.Sprintf("trial %d %s snapshot", trial, desc))
+			checkReadersEqual(dError, dClean, fmt.Sprintf("trial %d %s latest", trial, desc))
+			require.NoError(t, s.err.Close())
+			require.NoError(t, s.clean.Close())
+			snaps = slices.Delete(snaps, idx, idx+1)
+		}
+
+		applyBatch := func(fn func(b *Batch)) {
+			for _, d := range []*DB{dError, dClean} {
+				b := d.NewBatch()
+				fn(b)
+				require.NoError(t, b.Commit(nil))
+			}
+		}
+		flushBoth := func() {
+			require.NoError(t, dError.Flush())
+			require.NoError(t, dClean.Flush())
+		}
+
+		// singleDelOK[kIdx] is true iff the only operation on keys[kIdx] since
+		// its last point deletion (or the start of the trial) is a single SET,
+		// so a SINGLEDEL on it is deterministic.
+		setsSinceDel := make([]int, len(keys))
+		otherSinceDel := make([]bool, len(keys))
+		singleDelOK := func(kIdx int) bool {
+			return setsSinceDel[kIdx] == 1 && !otherSinceDel[kIdx]
+		}
+		resetSinceDel := func(kIdx int) {
+			setsSinceDel[kIdx] = 0
+			otherSinceDel[kIdx] = false
+		}
+
+		const numBatches = 20
+		for bIdx := range numBatches {
+			numOps := 1 + rng.IntN(8)
+			type opSpec struct {
+				kind   InternalKeyKind
+				kIdx   int
+				endIdx int
+				val    []byte
+				size   uint32
+			}
+			ops := make([]opSpec, numOps)
+			for opIdx := range numOps {
+				kIdx := rng.IntN(len(keys))
+				op := opSpec{
+					kIdx:   kIdx,
+					endIdx: kIdx + 1 + rng.IntN(len(keys)-kIdx),
+					val:    fmt.Appendf(nil, "[b%d.%d:%s]", bIdx, opIdx, keys[kIdx]),
+					size:   uint32(rng.IntN(32)),
+				}
+				switch n := rng.IntN(100); {
+				case n < 45:
+					op.kind = InternalKeyKindMerge
+					otherSinceDel[kIdx] = true
+				case n < 70:
+					op.kind = InternalKeyKindSet
+					setsSinceDel[kIdx]++
+				case n < 80:
+					op.kind = InternalKeyKindDelete
+					resetSinceDel(kIdx)
+				case n < 87:
+					op.kind = InternalKeyKindDeleteSized
+					resetSinceDel(kIdx)
+				case n < 93:
+					// Fall back to DEL if a SINGLEDEL would violate its
+					// contract.
+					op.kind = InternalKeyKindDelete
+					if singleDelOK(kIdx) {
+						op.kind = InternalKeyKindSingleDelete
+					}
+					resetSinceDel(kIdx)
+				default:
+					op.kind = InternalKeyKindRangeDelete
+					for i := kIdx; i < op.endIdx; i++ {
+						otherSinceDel[i] = true
+					}
+				}
+				ops[opIdx] = op
+			}
+			applyBatch(func(b *Batch) {
+				for _, op := range ops {
+					k := keys[op.kIdx]
+					switch op.kind {
+					case InternalKeyKindMerge:
+						require.NoError(t, b.Merge(k, op.val, nil))
+					case InternalKeyKindSet:
+						require.NoError(t, b.Set(k, op.val, nil))
+					case InternalKeyKindDelete:
+						require.NoError(t, b.Delete(k, nil))
+					case InternalKeyKindDeleteSized:
+						require.NoError(t, b.DeleteSized(k, op.size, nil))
+					case InternalKeyKindSingleDelete:
+						require.NoError(t, b.SingleDelete(k, nil))
+					case InternalKeyKindRangeDelete:
+						endKey := maxKeyEnd
+						if op.endIdx < len(keys) {
+							endKey = keys[op.endIdx]
+						}
+						require.NoError(t, b.DeleteRange(k, endKey, nil))
+					}
+				}
+			})
+			flushBoth()
+
+			// Randomly open or close snapshots so intermediate compactions on
+			// dError exercise multiple snapshot stripes alongside merge
+			// failures.
+			if len(snaps) < 3 && rng.IntN(3) == 0 {
+				snaps = append(snaps, snapPair{err: dError.NewSnapshot(), clean: dClean.NewSnapshot()})
+			} else if len(snaps) > 0 && rng.IntN(3) == 0 {
+				closeSnap(rng.IntN(len(snaps)), fmt.Sprintf("batch %d", bIdx))
+			}
+
+			// Run random compactions on dError while error injection is active.
+			failuresBefore := dError.Metrics().Keys.MergeFailuresCount
+			numCompactions := rng.IntN(3)
+			for range numCompactions {
+				i := rng.IntN(len(keys))
+				j := i + rng.IntN(len(keys)-i)
+				start := keys[i]
+				end := append(slices.Clone(keys[j]), 0)
+				if rng.IntN(4) != 0 {
+					cur := dError.DebugCurrentVersion()
+					var nonEmptyLevels []int
+					bounds := base.UserKeyBoundsInclusive(start, end)
+					for l := 0; l < numLevels-1; l++ {
+						overlaps := cur.Overlaps(l, bounds)
+						if !overlaps.Empty() {
+							nonEmptyLevels = append(nonEmptyLevels, l)
+						}
+					}
+					if len(nonEmptyLevels) > 0 {
+						level := nonEmptyLevels[rng.IntN(len(nonEmptyLevels))]
+						require.NoError(t, dError.manualCompact(context.Background(), start, end, level, false /* parallelize */))
+					}
+				} else {
+					require.NoError(t, dError.Compact(context.Background(), start, end, false /* parallelize */))
+				}
+			}
+			totalCompactionMergeFailures += dError.Metrics().Keys.MergeFailuresCount - failuresBefore
+		}
+
+		for len(snaps) > 0 {
+			closeSnap(len(snaps)-1, "final")
+		}
+
+		// Flush two batches writing sentinel keys outside [a, h] on both DBs so
+		// L0 has two tables spanning [sentinelLo, sentinelHi] without modifying
+		// any workload key in [a, h]. This ensures the final full compaction on
+		// dError compacts all levels through L6 without trivial-moving tables
+		// that still hold uncombined MERGE operands.
+		for i := range 2 {
+			val := fmt.Appendf(nil, "[final%d]", i)
+			applyBatch(func(b *Batch) {
+				require.NoError(t, b.Set(sentinelLo, val, nil))
+				require.NoError(t, b.Set(sentinelHi, val, nil))
+			})
+			flushBoth()
+		}
+
+		totalMergeFailures += dError.Metrics().Keys.MergeFailuresCount
+
+		// Disable error injection and run a final full compaction on dError,
+		// and compact dClean once.
+		rfm.injectErrors.Store(false)
+		require.NoError(t, dError.Compact(context.Background(), sentinelLo, sentinelHi, false /* parallelize */))
+		require.NoError(t, dClean.Compact(context.Background(), sentinelLo, sentinelHi, false /* parallelize */))
+
+		for _, d := range []*DB{dError, dClean} {
+			var stats CheckLevelsStats
+			require.NoError(t, d.CheckLevels(&stats))
+			require.Zero(t, stats.MergeFailures)
+		}
+
+		checkReadersEqual(dError, dClean, fmt.Sprintf("trial %d final", trial))
+
+		// Cross-check the physical keys in the bottommost level, verifying all
+		// MERGEs were collapsed to SET/SETWITHDEL at seqnum 0. The final
+		// compaction leaves all data in a single level, which is L6 unless the
+		// deepest level with files before the final compaction was shallower.
+		readBottomKeys := func(d *DB, name string) []string {
+			cur := d.DebugCurrentVersion()
+			bottom := -1
+			for l := range numLevels {
+				if !cur.Levels[l].Empty() {
+					require.Equal(t, -1, bottom, "trial %d %s: expected a single non-empty level\n%s",
+						trial, name, cur.DebugString())
+					bottom = l
+				}
+			}
+			require.NotEqual(t, -1, bottom, "trial %d %s: expected a non-empty level", trial, name)
+			var res []string
+			for f := range cur.Levels[bottom].All() {
+				iters, err := d.newIters(context.Background(), f, nil, internalIterOpts{}, iterPointKeys)
+				require.NoError(t, err)
+				for kv := iters.point.First(); kv != nil; kv = iters.point.Next() {
+					require.Zero(t, kv.K.SeqNum(), "trial %d %s: expected zero seqnum in L%d for %s", trial, name, bottom, kv.K)
+					require.Contains(t, []InternalKeyKind{InternalKeyKindSet, InternalKeyKindSetWithDelete}, kv.K.Kind(),
+						"trial %d %s: unexpected kind in L%d for %s", trial, name, bottom, kv.K)
+					val, _, err := kv.Value(nil)
+					require.NoError(t, err)
+					res = append(res, fmt.Sprintf("%s:%s", kv.K.UserKey, val))
+				}
+				require.NoError(t, iters.point.Error())
+				require.NoError(t, iters.CloseAll())
+			}
+			return res
+		}
+		require.Equal(t, readBottomKeys(dClean, "dClean"), readBottomKeys(dError, "dError"), "trial %d bottommost keys", trial)
+
+		require.NoError(t, dError.Close())
+		dError = nil
+		require.NoError(t, dClean.Close())
+		dClean = nil
+	}
+	require.Greater(t, totalMergeFailures, uint64(0))
+	require.Greater(t, totalCompactionMergeFailures, uint64(0),
+		"no merge failures were tolerated during intermediate compactions")
+}
+
 func TestLogData(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{

@@ -68,7 +68,11 @@ func (f *failMerger) MergeNewer(value []byte) error {
 }
 
 func (f *failMerger) MergeOlder(value []byte) error {
-	if string(value) == "fail-merge" {
+	switch string(value) {
+	case "fail-merge":
+		f.lastBuf = nil
+		return base.MarkCorruptionError(errors.New("merge failed"))
+	case "noncorrupt-fail-merge":
 		f.lastBuf = nil
 		return errors.New("merge failed")
 	}
@@ -77,7 +81,11 @@ func (f *failMerger) MergeOlder(value []byte) error {
 }
 
 func (f *failMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
-	if string(f.lastBuf) == "fail-finish" {
+	switch string(f.lastBuf) {
+	case "fail-finish":
+		f.lastBuf = nil
+		return nil, nil, base.MarkCorruptionError(errors.New("finish failed"))
+	case "noncorrupt-fail-finish":
 		f.lastBuf = nil
 		return nil, nil, errors.New("finish failed")
 	}
@@ -132,7 +140,9 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 
 	failMerger := &Merger{
 		Merge: func(key, value []byte) (ValueMerger, error) {
-			fm.lastBuf = append(fm.lastBuf[:0], value...)
+			if err := fm.MergeOlder(value); err != nil {
+				return nil, err
+			}
 			return fm, nil
 		},
 
@@ -285,16 +295,21 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			l0Organizer := manifest.NewL0Organizer(testkeys.Comparer, 0 /* flushSplitBytes */)
 			version := manifest.NewVersionForTesting(testkeys.Comparer, l0Organizer, files)
 			readState := &readState{current: version}
+			var stats CheckLevelsStats
 			c := &checkConfig{
 				comparer:  testkeys.Comparer,
 				readState: readState,
 				newIters:  newIters,
 				seqNum:    base.SeqNumMax,
+				stats:     &stats,
 				merge:     merge,
 				formatKey: formatKey,
 			}
 			if err := checkLevelsInternal(c); err != nil {
 				return err.Error()
+			}
+			if stats.MergeFailures > 0 {
+				return fmt.Sprintf("merge-failures=%d\n", stats.MergeFailures)
 			}
 			return ""
 		default:

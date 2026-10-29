@@ -8,7 +8,6 @@ import (
 	stdcmp "cmp"
 	"context"
 	"fmt"
-	"io"
 	"iter"
 	"maps"
 	"slices"
@@ -73,6 +72,12 @@ type simpleMergingIter struct {
 	lastIterMsg string
 	// A non-nil valueMerger means MERGE record processing is ongoing.
 	valueMerger base.ValueMerger
+	// mergeAborted is true when an ongoing series of MERGE records encountered
+	// a non-corruption Merger error. Subsequent MERGE records in the same
+	// series are skipped until the series ends on a key change or a non-MERGE
+	// point key.
+	mergeAborted  bool
+	mergeFailures int
 	// The first error will cause step() to return false.
 	err       error
 	numPoints int64
@@ -160,22 +165,43 @@ func (m *simpleMergingIter) step() bool {
 	if m.heap.len() == 0 {
 		// If m.valueMerger != nil, the last record was a MERGE record.
 		if m.valueMerger != nil {
-			var closer io.Closer
-			var err error
-			_, closer, err = m.valueMerger.Finish(true /* includesBase */)
-			if closer != nil {
-				err = errors.CombineErrors(err, closer.Close())
-			}
-			if err != nil {
+			if err := m.finishValueMerger(); err != nil {
 				m.err = errors.CombineErrors(m.err,
 					errors.Wrapf(err, "merge processing error on key %s in %s",
 						item.kv.K.Pretty(m.formatKey), m.lastIterMsg))
 			}
-			m.valueMerger = nil
 		}
 		return false
 	}
 	return true
+}
+
+// handleMergeError processes an error returned by the Merger. Non-corruption
+// Merger errors are contained to the key during compaction (leaving the MERGE
+// operands uncombined on disk), so they are counted in m.mergeFailures and
+// tolerated; corruption errors fail level checking.
+func (m *simpleMergingIter) handleMergeError(err error, abortSeries bool) error {
+	if err == nil {
+		return nil
+	}
+	m.valueMerger = nil
+	if base.IsCorruptionError(err) {
+		return err
+	}
+	m.mergeFailures++
+	m.mergeAborted = abortSeries
+	return nil
+}
+
+// finishValueMerger finishes m.valueMerger and always clears m.valueMerger.
+func (m *simpleMergingIter) finishValueMerger() error {
+	_, closer, err := m.valueMerger.Finish(true /* includesBase */)
+	m.valueMerger = nil
+	err = m.handleMergeError(err, false /* abortSeries */)
+	if closer != nil {
+		err = errors.CombineErrors(err, closer.Close())
+	}
+	return err
 }
 
 // handleVisiblePoint returns true if validation succeeded and level checking
@@ -202,13 +228,11 @@ func (m *simpleMergingIter) handleVisiblePoint(
 		m.lastLevel = item.index
 	}
 	// Ongoing series of MERGE records ends with a MERGE record.
-	if keyChanged && m.valueMerger != nil {
-		var closer io.Closer
-		_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
-		if m.err == nil && closer != nil {
-			m.err = closer.Close()
+	if keyChanged {
+		if m.valueMerger != nil {
+			m.err = m.finishValueMerger()
 		}
-		m.valueMerger = nil
+		m.mergeAborted = false
 	}
 	itemValue, _, err := item.kv.Value(nil)
 	if err != nil {
@@ -219,33 +243,30 @@ func (m *simpleMergingIter) handleVisiblePoint(
 		// Ongoing series of MERGE records.
 		switch item.kv.K.Kind() {
 		case InternalKeyKindSingleDelete, InternalKeyKindDelete, InternalKeyKindDeleteSized:
-			var closer io.Closer
-			_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
-			if m.err == nil && closer != nil {
-				m.err = closer.Close()
-			}
-			m.valueMerger = nil
+			m.err = m.finishValueMerger()
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
-			m.err = m.valueMerger.MergeOlder(itemValue)
-			if m.err == nil {
-				var closer io.Closer
-				_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
-				if m.err == nil && closer != nil {
-					m.err = closer.Close()
-				}
+			if err := m.valueMerger.MergeOlder(itemValue); err != nil {
+				m.err = m.handleMergeError(err, false /* abortSeries */)
+			} else {
+				m.err = m.finishValueMerger()
 			}
-			m.valueMerger = nil
 		case InternalKeyKindMerge:
-			m.err = m.valueMerger.MergeOlder(itemValue)
+			m.err = m.handleMergeError(m.valueMerger.MergeOlder(itemValue), true /* abortSeries */)
 		default:
 			m.err = errors.Errorf("pebble: invalid internal key kind %s in %s",
 				item.kv.K.Pretty(m.formatKey),
 				l.iter)
 			return false
 		}
+	} else if m.mergeAborted {
+		if item.kv.K.Kind() != InternalKeyKindMerge {
+			m.mergeAborted = false
+		}
 	} else if item.kv.K.Kind() == InternalKeyKindMerge && m.err == nil {
 		// New series of MERGE records.
-		m.valueMerger, m.err = m.merge(item.kv.K.UserKey, itemValue)
+		var err error
+		m.valueMerger, err = m.merge(item.kv.K.UserKey, itemValue)
+		m.err = m.handleMergeError(err, true /* abortSeries */)
 	}
 	if m.err != nil {
 		m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
@@ -502,6 +523,9 @@ func fragmentUsingUserKeys(
 type CheckLevelsStats struct {
 	NumPoints     int64
 	NumTombstones int
+	// MergeFailures counts the number of non-corruption Merger errors
+	// tolerated while checking MERGE records.
+	MergeFailures int
 }
 
 // CheckLevels checks:
@@ -509,7 +533,7 @@ type CheckLevelsStats struct {
 //     comment at the top of the file.
 //   - Point keys in sstables are ordered.
 //   - Range delete tombstones in sstables are ordered and fragmented.
-//   - Successful processing of all MERGE records.
+//   - Processing of MERGE records does not encounter corruption errors.
 //   - Each sstable's blob reference liveness block is valid.
 func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	// Grab and reference the current readState.
@@ -656,6 +680,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	}
 	if c.stats != nil {
 		c.stats.NumPoints = mergingIter.numPoints
+		c.stats.MergeFailures = mergingIter.mergeFailures
 	}
 
 	// Phase 2: Check that the tombstones are mutually consistent.

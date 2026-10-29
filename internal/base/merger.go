@@ -84,7 +84,16 @@ type DeletableValueMerger interface {
 // either Delete or DeleteRange.
 //
 // The merge operation is invoked when a merge value is encountered during a
-// read, either during a compaction or during iteration.
+// read, either during a compaction or during iteration. During iteration, any
+// error returned by Merge or ValueMerger methods is surfaced to the iterator
+// caller. During a flush or compaction, an error marked with
+// MarkCorruptionError aborts the flush or compaction; any other error is
+// contained to that key by leaving the merge operands in the snapshot stripe
+// uncombined at their original sequence numbers. Containment requires
+// buffering the stripe's merge operands in memory, which is bounded by an
+// internal limit (1 MiB). If the operands in a stripe exceed that limit
+// (including a single operand larger than the limit), a non-corruption error
+// also aborts the flush or compaction.
 type Merger struct {
 	Merge Merge
 

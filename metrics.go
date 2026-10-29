@@ -489,6 +489,9 @@ type KeysMetrics struct {
 	// A cumulative total number of missized DELSIZED keys encountered by
 	// compactions since the database was opened.
 	MissizedTombstonesCount uint64
+	// A cumulative total number of non-corruption Merger errors tolerated by
+	// flushes and compactions since the database was opened.
+	MergeFailuresCount uint64
 	// MaxUserKeySize is the size in bytes of the largest user key in the LSM's
 	// sstables, considering point keys as well as range deletion and range key
 	// bounds; keys in memtables (including flushable ingests) are not reflected.
