@@ -640,61 +640,10 @@ func (i *Iter) Next() *base.InternalKV {
 			return &i.kv
 
 		case base.InternalKeyKindMerge:
-			// Record the snapshot index before mergeNext as merging
-			// advances the iterator, adjusting curSnapshotIdx.
-			origSnapshotIdx := i.curSnapshotIdx
-			var valueMerger base.ValueMerger
-			// MERGE values are always stored in-place.
-			valueMerger, i.err = i.cfg.Merge(i.iterKV.K.UserKey, i.iterKV.InPlaceValue())
-			if i.err == nil {
-				i.mergeNext(valueMerger)
+			if kv := i.mergeNext(); kv != nil || i.err != nil {
+				return kv
 			}
-			var needDelete bool
-			if i.err == nil {
-				// If this is the oldest version of this key (the bottommost
-				// snapshot stripe), we can transform the sequence number to
-				// zero. This can improve compression and enables an
-				// optimization during forward iteration to skip some key
-				// comparisons. Additionally, we can transform the key kind to
-				// SET so that iteration and future compactions do not need to
-				// invoke the user's Merge operator.
-				if i.isBottommostSnapshotStripe(origSnapshotIdx) {
-					i.kv.K.SetSeqNum(base.SeqNumZero)
-					// During the merge (see mergeNext), we may have already
-					// transformed the key kind to SET or SETWITHDEL, in which case we want to preserve the existing key kind.
-					if i.kv.K.Kind() == base.InternalKeyKindMerge {
-						i.kv.K.SetKind(base.InternalKeyKindSet)
-					}
-				}
-
-				// includesBase is true when we've merged the oldest operand in
-				// the LSM.
-				var includesBase bool
-				switch i.kv.K.Kind() {
-				case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
-					includesBase = true
-				case base.InternalKeyKindMerge:
-				default:
-					panic(errors.AssertionFailedf(
-						"unexpected kind %s", redact.SafeString(i.kv.K.Kind().String())))
-				}
-				i.kv.V, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, includesBase)
-			}
-			if i.err == nil {
-				if needDelete {
-					if i.closeValueCloser() != nil {
-						return nil
-					}
-					continue
-				}
-				return &i.kv
-			}
-			if i.err != nil {
-				// TODO(sumeer): why is MarkCorruptionError only being called for
-				// MERGE?
-				i.err = base.MarkCorruptionError(i.err)
-			}
-			return nil
+			continue
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
@@ -906,19 +855,32 @@ func (i *Iter) setNext() {
 	}
 }
 
-func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
+func (i *Iter) mergeNext() *base.InternalKV {
+	// Record the snapshot index before advancing as merging advances the
+	// iterator, adjusting curSnapshotIdx.
+	origSnapshotIdx := i.curSnapshotIdx
+	var valueMerger base.ValueMerger
+	// MERGE values are always stored in-place.
+	valueMerger, i.err = i.cfg.Merge(i.iterKV.K.UserKey, i.iterKV.InPlaceValue())
+	if i.err != nil {
+		i.err = base.MarkCorruptionError(i.err)
+		return nil
+	}
+
 	// Save the current key.
 	i.saveKey()
 
 	// Loop looking for older values in the current snapshot stripe and merge
 	// them.
+mergeLoop:
 	for {
-		if i.nextInStripe() != sameStripe {
-			i.pos = iterPosNext
-			return
-		}
+		stripeChange := i.nextInStripe()
 		if i.err != nil {
-			panic(i.err)
+			return nil
+		}
+		if stripeChange != sameStripe {
+			i.pos = iterPosNext
+			break mergeLoop
 		}
 		// NB: MERGE#10+RANGEDEL#9 stays a MERGE, since nextInStripe skips
 		// sameStripe keys that are visibly covered by a RANGEDEL. There may be
@@ -949,7 +911,7 @@ func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 			// use of SingleDelete.
 			i.kv.K.SetKind(base.InternalKeyKindSetWithDelete)
 			i.skip = true
-			return
+			break mergeLoop
 
 		case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
 			// We've hit a Set or SetWithDel value. Merge with the existing
@@ -963,18 +925,19 @@ func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 			var callerOwned bool
 			v, callerOwned, i.err = i.iterKV.Value(i.valueBuf[:0])
 			if i.err != nil {
-				return
+				return nil
 			}
 			if callerOwned && cap(v) > cap(i.valueBuf) {
 				i.valueBuf = v
 			}
 			i.err = valueMerger.MergeOlder(v)
 			if i.err != nil {
-				return
+				i.err = base.MarkCorruptionError(i.err)
+				return nil
 			}
 			i.kv.K.SetKind(base.InternalKeyKindSet)
 			i.skip = true
-			return
+			break mergeLoop
 
 		case base.InternalKeyKindMerge:
 			// We've hit another Merge value. Merge with the existing value and
@@ -983,14 +946,44 @@ func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 			// MERGE values are always stored in-place.
 			i.err = valueMerger.MergeOlder(i.iterKV.InPlaceValue())
 			if i.err != nil {
-				return
+				i.err = base.MarkCorruptionError(i.err)
+				return nil
 			}
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
-			return
+			return nil
 		}
 	}
+
+	// If this is the oldest version of this key (the bottommost snapshot
+	// stripe), we can transform the sequence number to zero. This can improve
+	// compression and enables an optimization during forward iteration to skip
+	// some key comparisons. Additionally, we can transform the key kind to
+	// SET so that iteration and future compactions do not need to invoke the
+	// user's Merge operator.
+	if i.isBottommostSnapshotStripe(origSnapshotIdx) {
+		i.kv.K.SetSeqNum(base.SeqNumZero)
+		// During the merge, we may have already transformed the key kind to SET
+		// or SETWITHDEL, in which case we want to preserve the existing key kind.
+		if i.kv.K.Kind() == base.InternalKeyKindMerge {
+			i.kv.K.SetKind(base.InternalKeyKindSet)
+		}
+	}
+
+	// includesBase is true when we've merged the oldest operand in the LSM.
+	includesBase := i.kv.K.Kind() != base.InternalKeyKindMerge
+	var needDelete bool
+	i.kv.V, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, includesBase)
+	if i.err != nil {
+		i.err = base.MarkCorruptionError(i.err)
+		return nil
+	}
+	if needDelete {
+		_ = i.closeValueCloser()
+		return nil
+	}
+	return &i.kv
 }
 
 // singleDeleteNext processes a SingleDelete point tombstone. A SingleDelete, or
