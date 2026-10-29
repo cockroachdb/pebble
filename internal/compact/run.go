@@ -77,6 +77,7 @@ type Stats struct {
 	// output objects specifically.
 	CumulativeBlobFileSize uint64
 	CountMissizedDels      uint64
+	CountMergeFailures     uint64
 }
 
 // RunnerConfig contains the parameters needed for the Runner.
@@ -348,9 +349,9 @@ func (r *Runner) writeKeysToTable(
 // compaction.
 func (r *Runner) Finish() Result {
 	r.err = errors.CombineErrors(r.err, r.iter.Close())
-	// The compaction iterator keeps track of a count of the number of DELSIZED
-	// keys that encoded an incorrect size.
-	r.stats.CountMissizedDels = r.iter.Stats().CountMissizedDels
+	iterStats := r.iter.Stats()
+	r.stats.CountMissizedDels = iterStats.CountMissizedDels
+	r.stats.CountMergeFailures = iterStats.CountMergeFailures
 	return Result{
 		Err:    r.err,
 		Tables: r.tables,

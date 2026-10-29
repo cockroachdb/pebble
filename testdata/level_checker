@@ -374,3 +374,44 @@ Level 1
 
 check
 ----
+
+# Corruption merge errors when the merge is first set up or in MergeOlder
+# against a SET fail CheckLevels.
+define
+L
+a#10,MERGE a#9,SET
+a#10,MERGE:fail-merge a#9,SET:9
+----
+Level 1
+  file 0: [a#10,MERGE-a#9,SET]
+
+check merger=fail-merger
+----
+merge processing error on key a#10,MERGE in L1: fileNum=000036: merge failed
+
+define
+L
+a#10,MERGE a#9,SET
+a#10,MERGE:10 a#9,SET:fail-merge
+----
+Level 1
+  file 0: [a#10,MERGE-a#9,SET]
+
+check merger=fail-merger
+----
+merge processing error on key a#9,SET in L1: fileNum=000037: merge failed
+
+# Non-corruption merge errors (on merge init, MergeOlder on MERGE, MergeOlder
+# on SET, and Finish) are contained to the key, counted in
+# CheckLevelsStats.MergeFailures, and do not fail CheckLevels.
+define
+L
+a#10,MERGE d#9,SET
+a#10,MERGE:noncorrupt-fail-merge a#9,MERGE:9 a#8,SET:8 b#10,MERGE:10 b#9,MERGE:noncorrupt-fail-merge b#8,MERGE:8 c#10,MERGE:10 c#9,SET:noncorrupt-fail-merge c#8,MERGE:8 d#10,MERGE:10 d#9,SET:noncorrupt-fail-finish
+----
+Level 1
+  file 0: [a#10,MERGE-d#9,SET]
+
+check merger=fail-merger
+----
+merge-failures=4

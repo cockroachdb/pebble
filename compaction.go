@@ -1868,6 +1868,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		d.mu.snapshots.cumulativePinnedCount += stats.CumulativePinnedKeys
 		d.mu.snapshots.cumulativePinnedSize += stats.CumulativePinnedSize
 		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.CountMissizedDels
+		d.mu.versions.metrics.Keys.MergeFailuresCount += stats.CountMergeFailures
 	}
 
 	d.clearCompactingState(c, err != nil)
@@ -2476,6 +2477,7 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 		d.mu.snapshots.cumulativePinnedCount += stats.CumulativePinnedKeys
 		d.mu.snapshots.cumulativePinnedSize += stats.CumulativePinnedSize
 		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.CountMissizedDels
+		d.mu.versions.metrics.Keys.MergeFailuresCount += stats.CountMergeFailures
 	}
 
 	// NB: clearing compacting state must occur before updating the read state;
@@ -2860,6 +2862,7 @@ func (d *DB) compactAndWrite(
 	if err != nil {
 		return compact.Result{Err: err}
 	}
+	var loggedMergeFailure bool
 	cfg := compact.IterConfig{
 		Comparer:              c.comparer,
 		Merge:                 d.merge,
@@ -2886,6 +2889,13 @@ func (d *DB) compactAndWrite(
 				ExtraInfo: redact.Sprintf("elidedSize=%d,expectedSize=%d",
 					redact.SafeUint(elidedSize), redact.SafeUint(expectedSize)),
 			})
+		},
+		MergeFailureCallback: func(userKey []byte, err error) {
+			if !loggedMergeFailure {
+				loggedMergeFailure = true
+				d.opts.Logger.Errorf("[JOB %d] merge failed on key %s (operands left uncombined): %v",
+					jobID, c.comparer.FormatKey(userKey), err)
+			}
 		},
 	}
 	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)

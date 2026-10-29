@@ -1165,3 +1165,260 @@ next
 a#3,SET:<blobref(B000294, encodedHandle=020a, valLen=20)>
 b#9,SET:<fetched value from blobref(B000294, encodedHandle=0223, valLen=100)>mergekeyvalue[base]
 .
+
+# Merge failures (triggered by values starting with '!'):
+# - "!init" fails in Merge()
+# - "!older" fails in MergeOlder()
+# - "!finish" fails in Finish()
+# - "!finish-close-ok" fails in Finish() and returns a closer that succeeds
+# - "!finish-close-err" fails in Finish() and returns a closer that fails
+# - "!corrupt" fails with a corruption error, aborting the compaction
+# - any other "!" prefix fails at whichever stage encounters it
+# When merging fails for a key in a stripe, all MERGE operands in that stripe
+# are emitted uncombined at their original sequence numbers (never zeroed or
+# converted to SET, even at the bottommost layer), and any trailing SET or
+# deletion tombstone in the stripe is processed normally from its position.
+
+define
+a#5,MERGE:!init
+a#4,MERGE:a4
+a#3,SET:a3
+a#2,DEL:
+a#1,SET:a1
+b#4,MERGE:b4
+b#3,MERGE:!older
+b#2,MERGE:b2
+c#4,MERGE:c4
+c#3,SET:!older
+d#4,MERGE:!finish
+d#3,DEL:
+d#2,SET:d2
+e#2,SET:e2
+e#1,SET:e1
+----
+
+iter print-merge-failures print-merge-failure-info
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a#5,MERGE:!init
+a#4,MERGE:a4
+a#3,SETWITHDEL:a3
+b#4,MERGE:b4
+b#3,MERGE:!older
+b#2,MERGE:b2
+c#4,MERGE:c4
+c#3,SET:!older
+d#4,MERGE:!finish
+d#3,DEL:
+e#2,SET:e2
+merge-failures=4
+merge-failure-info: a (debugMerger: merge init error); b (debugMerger: merge older error); c (debugMerger: merge older error); d (debugMerger: finish error)
+
+# At the bottommost layer with tombstone elision enabled:
+# - Uncombined MERGE operands keep their original sequence numbers and MERGE kind.
+# - A trailing SET in the bottommost stripe has its sequence number zeroed.
+# - A trailing DEL in the bottommost stripe is elided along with older keys in the stripe.
+iter elide-tombstones=true is-bottommost-layer=true
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a#5,MERGE:!init
+a#4,MERGE:a4
+a#0,SETWITHDEL:a3
+b#4,MERGE:b4
+b#3,MERGE:!older
+b#2,MERGE:b2
+c#4,MERGE:c4
+c#0,SET:!older
+d#4,MERGE:!finish
+e#0,SET:e2
+
+# Snapshot stripes and RANGEDEL interaction with merge failures:
+# - A stripe without a failing operand still merges normally.
+# - A stripe with a failing operand emits its MERGE operands uncombined while
+#   preserving snapshotPinned and forceObsoleteDueToRangeDel for every emitted key.
+
+define
+a#10,RANGEDEL:c
+b#9,MERGE:b9
+b#8,MERGE:b8
+b#6,MERGE:b6
+b#5,MERGE:!older
+b#4,SET:b4
+----
+
+iter print-snapshot-pinned print-force-obsolete snapshots=(7,10)
+first
+next
+next
+next
+next
+next
+----
+a#inf,RANGEDEL: (not pinned) (not force obsolete); Span() = a-c:{(#10,RANGEDEL)}
+b#9,MERGE:b8b9 (pinned) (force obsolete)
+b#6,MERGE:b6 (pinned) (force obsolete)
+b#5,MERGE:!older (pinned) (force obsolete)
+b#4,SET:b4 (pinned) (force obsolete)
+.
+
+# Additional merge failure cases:
+# - Key a: failing merge followed by a SINGLEDEL in the same stripe. Unlike the
+#   success path (which produces SETWITHDEL), the uncombined MERGE operands are
+#   emitted and then the SINGLEDEL is processed normally, consuming a#2,SET:a2
+#   and eliding both.
+# - Key b: failing merge followed by a DELSIZED in the same stripe. The
+#   uncombined MERGE operand is emitted and the DELSIZED is processed normally,
+#   consuming b#2,SET:b2 (size = len("b")+len("b2") = 3).
+# - Key c: failing upper snapshot stripe above a healthy lower snapshot stripe
+#   of the same key.
+# - Key d: failing Finish that also returns a non-nil closer (whose Close
+#   succeeds).
+
+define
+a#5,MERGE:a5
+a#4,MERGE:!older
+a#3,SINGLEDEL:
+a#2,SET:a2
+b#4,MERGE:!init
+b#3,DELSIZED:varint(3)
+b#2,SET:b2
+c#9,MERGE:c9
+c#8,MERGE:!older
+c#6,MERGE:c6
+c#5,SET:c5
+d#2,MERGE:!finish-close-ok
+d#1,SET:d1
+----
+
+iter print-snapshot-pinned print-merge-failures snapshots=(7)
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a#5,MERGE:a5 (not pinned)
+a#4,MERGE:!older (not pinned)
+b#4,MERGE:!init (not pinned)
+b#3,DELSIZED: (not pinned)
+c#9,MERGE:c9 (not pinned)
+c#8,MERGE:!older (not pinned)
+c#6,SET:c5c6[base] (pinned)
+d#2,MERGE:!finish-close-ok (not pinned)
+d#1,SET:d1 (not pinned)
+.
+merge-failures=4
+
+# Additional SINGLEDEL cases after a failed merge:
+# - Key a: MERGE (failing), then SINGLEDEL, then MERGE, then SET in the same
+#   stripe. The SINGLEDEL consumes a#3,MERGE:a3 and sees a#2,SET:a2 beneath it,
+#   firing NondeterministicSingleDeleteCallback and leaving a#2,SET:a2 to be
+#   emitted.
+# - Key b: MERGE (failing), then SINGLEDEL, then DEL, then SET in the same
+#   stripe. The SINGLEDEL meets the DEL, firing IneffectualSingleDeleteCallback;
+#   without tombstone elision it transforms into a DEL and skips b#1,SET:b1,
+#   and with tombstone elision at the bottommost layer both tombstones and
+#   b#1,SET:b1 are elided.
+# - Key c: MERGE (failing), then SINGLEDEL alone at the bottommost layer with
+#   tombstone elision enabled, firing IneffectualSingleDeleteCallback.
+
+define
+a#5,MERGE:!init
+a#4,SINGLEDEL:
+a#3,MERGE:a3
+a#2,SET:a2
+b#4,MERGE:!init
+b#3,SINGLEDEL:
+b#2,DEL:
+b#1,SET:b1
+c#2,MERGE:!init
+c#1,SINGLEDEL:
+----
+
+iter print-merge-failures
+first
+next
+next
+next
+next
+next
+next
+----
+a#5,MERGE:!init
+a#2,SET:a2
+b#4,MERGE:!init
+b#3,DEL:
+c#2,MERGE:!init
+c#1,SINGLEDEL:
+.
+merge-failures=3
+ineffectual-single-deletes: b
+invariant-violation-single-deletes: a
+
+iter elide-tombstones=true is-bottommost-layer=true print-merge-failures
+first
+next
+next
+next
+next
+----
+a#5,MERGE:!init
+a#0,SET:a2
+b#4,MERGE:!init
+c#2,MERGE:!init
+.
+merge-failures=3
+ineffectual-single-deletes: b,c
+invariant-violation-single-deletes: a
+
+# A failing Finish whose returned closer also fails on Close aborts iteration
+# with the Finish error (and attaches the Close error as a secondary error).
+
+define
+a#2,MERGE:!finish-close-err
+a#1,SET:a1
+----
+
+iter print-merge-failures
+first
+----
+err=debugMerger: finish error
+merge-failures=0
+
+# A Merger error marked as corruption via base.MarkCorruptionError aborts the
+# compaction instead of emitting uncombined operands.
+
+define
+a#2,MERGE:!corrupt
+a#1,SET:a1
+----
+
+iter print-merge-failures
+first
+----
+err=debugMerger: corrupt merge error
+merge-failures=0

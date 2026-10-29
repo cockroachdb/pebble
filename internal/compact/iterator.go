@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"io"
 	"strconv"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -59,6 +60,20 @@ import (
 // (older) level and not involved in the compaction. If the compaction of
 // a.MERGE.3 and a.SET.2 produced a.MERGE.3, a subsequent compaction with
 // a.MERGE.1 would merge the values together incorrectly.
+//
+// If the Merger returns a non-corruption error while combining operands for a
+// key during a flush or compaction, compact.Iter contains the failure to that
+// key by emitting the MERGE operands in the stripe uncombined (each at its
+// original sequence number, without converting MERGE to SET or zeroing
+// sequence numbers at the bottommost layer) and processing any trailing SET or
+// deletion tombstone in the stripe from its position. Because uncombined MERGE
+// operands are never collapsed even at the bottommost level, repeated merge
+// failures on a key will retain every new MERGE operand until a future merge
+// succeeds or the key is overwritten or deleted. Errors marked as corruption
+// via base.MarkCorruptionError abort the flush or compaction. Containment
+// requires buffering the stripe's MERGE operands, so a non-corruption error
+// also aborts the flush or compaction if the buffered operands exceed
+// maxMergeBufBytes (including a single operand larger than the limit).
 //
 // 3. Snapshots
 //
@@ -175,8 +190,8 @@ type Iter struct {
 	// consumer. All public methods will return &kv or nil.
 	//
 	// The memory of kv.K.UserKey is always backed by `keyBuf`. The memory of
-	// kv.V may be backed by `valueBuf`, or may point directly into the block
-	// buffer of an input ssblock.
+	// kv.V may be backed by `valueBuf` or `mergeValueBuf`, or may point
+	// directly into the block buffer of an input ssblock.
 	//
 	// When stepping the inner internal iterator, the contents of iterKV are
 	// moved into kv.
@@ -205,7 +220,18 @@ type Iter struct {
 	// advanced.
 	valueBuf []byte
 	// valueFetcher is used by saveValue when Cloning InternalValues.
-	valueFetcher     base.LazyFetcher
+	valueFetcher base.LazyFetcher
+	// mergeOps, mergeOpIdx, mergeValueBuf, and mergeBufOverflow buffer the
+	// MERGE operands encountered in the current stripe during mergeNext (up to
+	// maxMergeBufBytes bytes). If the Merger fails with a non-corruption
+	// error and mergeBufOverflow is false, mergeNext emits the first buffered
+	// operand via emitPendingMergeOp and subsequent Next calls emit the
+	// remaining operands at mergeOps[mergeOpIdx:] before resuming normal
+	// iteration.
+	mergeOps         []savedMergeOp
+	mergeOpIdx       int
+	mergeValueBuf    []byte
+	mergeBufOverflow bool
 	iterKV           *base.InternalKV
 	iterStripeChange stripeChangeType
 	// skip indicates whether the remaining entries in the current snapshot
@@ -268,6 +294,16 @@ type Iter struct {
 	stats IterStats
 }
 
+// savedMergeOp records a single MERGE operand buffered in Iter.mergeOps and
+// Iter.mergeValueBuf while mergeNext scans a snapshot stripe, so that the
+// operand can be re-emitted uncombined if the Merger fails.
+type savedMergeOp struct {
+	trailer     base.InternalKeyTrailer
+	meta        base.KVMeta
+	valueOffset int
+	valueLen    int
+}
+
 // IterConfig contains the parameters necessary to create a compaction iterator.
 type IterConfig struct {
 	Comparer *base.Comparer
@@ -311,6 +347,11 @@ type IterConfig struct {
 	// size of the elided key and the expected size that was recorded in the
 	// tombstone. For the first case (when a key doesn't exist), these will be 0.
 	MissizedDeleteCallback func(userKey []byte, elidedSize, expectedSize uint64)
+
+	// MergeFailureCallback is called in compactions/flushes when a Merger
+	// returns a non-corruption error for a key in a snapshot stripe and its
+	// MERGE operands are emitted uncombined.
+	MergeFailureCallback func(userKey []byte, err error)
 }
 
 func (c *IterConfig) ensureDefaults() {
@@ -323,12 +364,18 @@ func (c *IterConfig) ensureDefaults() {
 	if c.MissizedDeleteCallback == nil {
 		c.MissizedDeleteCallback = func(userKey []byte, _, _ uint64) {}
 	}
+	if c.MergeFailureCallback == nil {
+		c.MergeFailureCallback = func(userKey []byte, _ error) {}
+	}
 }
 
 // IterStats are statistics produced by the compaction iterator.
 type IterStats struct {
 	// Count of DELSIZED keys that were missized.
 	CountMissizedDels uint64
+	// Count of snapshot stripes where a non-corruption Merger error occurred
+	// and the MERGE operands were emitted uncombined.
+	CountMergeFailures uint64
 }
 
 type iterPos int8
@@ -365,9 +412,10 @@ func NewIter(
 		i.rangeKeyInterleaving.Init(cfg.Comparer, iter, rangeKeyIter, keyspan.InterleavingIterOpts{})
 		iter = &i.rangeKeyInterleaving
 	}
-	// Check whether the underlying iterator supports KVMeta before
-	// MaybeWrapIfInvariants, since invalidating.iter implements
-	// InternalIteratorWithKVMeta unconditionally.
+	// Check whether iter implements InternalIteratorWithKVMeta before wrapping
+	// with invalidating.MaybeWrapIfInvariants: invalidating.iter unconditionally
+	// implements InternalIteratorWithKVMeta, so checking after wrapping would
+	// populate i.metaIter even when the underlying iterator does not support it.
 	_, hasMeta := iter.(base.InternalIteratorWithKVMeta)
 	i.iter = invalidating.MaybeWrapIfInvariants(iter)
 	if hasMeta {
@@ -420,6 +468,10 @@ func (i *Iter) First() *base.InternalKV {
 		return nil
 	}
 
+	i.mergeOps = i.mergeOps[:0]
+	i.mergeOpIdx = 0
+	i.mergeBufOverflow = false
+
 	if i.metaIter != nil {
 		i.iterKV, i.nextMeta = i.metaIter.FirstWithMeta()
 	} else {
@@ -448,15 +500,22 @@ func (i *Iter) Next() *base.InternalKV {
 		return nil
 	}
 
-	// Prior to this call to `Next()` we are in one of three situations with
+	// Prior to this call to `Next()` we are in one of four situations with
 	// respect to `iterKey` and related state:
 	//
+	// - `len(mergeOps) > 0`: A previous call to `mergeNext()` encountered a
+	//   merge failure and buffered the stripe's MERGE operands; we drain the
+	//   next pending operand before resuming normal iteration.
 	// - `!skip && pos == iterPosNext`: `iterKey` is already at the next key.
 	// - `!skip && pos == iterPosCurForward`: We are at the key that has been returned.
 	//   To move forward we advance by one key, even if that lands us in the same
 	//   snapshot stripe.
 	// - `skip && pos == iterPosCurForward`: We are at the key that has been returned.
 	//   To move forward we skip skippable entries in the stripe.
+	if len(i.mergeOps) > 0 {
+		return i.emitPendingMergeOp()
+	}
+
 	if i.pos == iterPosCurForward {
 		if i.skip {
 			i.skipInStripe()
@@ -855,32 +914,58 @@ func (i *Iter) setNext() {
 	}
 }
 
+// maxMergeBufBytes caps the total bytes buffered in Iter.mergeValueBuf and
+// Iter.mergeOps for a single snapshot stripe. Because saveMergeOp copies every
+// MERGE operand in a stripe before knowing whether the merge will succeed,
+// capping the buffer bounds memory overhead and avoids buffering unbounded
+// operand data on keys with many MERGE operands. If a stripe's MERGE operands
+// exceed this cap, Iter stops buffering operands for the stripe and falls back
+// to failing the compaction if the merge later fails.
+const maxMergeBufBytes = 1 << 20 // 1 MiB
+
+// savedMergeOpSize is the in-memory size of a savedMergeOp, counted against
+// maxMergeBufBytes for every buffered MERGE operand.
+const savedMergeOpSize = int(unsafe.Sizeof(savedMergeOp{}))
+
+// mergeNext processes a series of MERGE records in the current snapshot stripe,
+// combining them with one another and with any trailing SET, SETWITHDEL, or
+// deletion tombstone in the same stripe. If the Merger returns a non-corruption
+// error, mergeNext falls back to emitting the stripe's MERGE operands
+// uncombined at their original sequence numbers.
 func (i *Iter) mergeNext() *base.InternalKV {
-	// Record the snapshot index before advancing as merging advances the
-	// iterator, adjusting curSnapshotIdx.
-	origSnapshotIdx := i.curSnapshotIdx
-	var valueMerger base.ValueMerger
-	// MERGE values are always stored in-place.
-	valueMerger, i.err = i.cfg.Merge(i.iterKV.K.UserKey, i.iterKV.InPlaceValue())
-	if i.err != nil {
-		i.err = base.MarkCorruptionError(i.err)
-		return nil
+	if invariants.Enabled && (len(i.mergeOps) != 0 || i.mergeOpIdx != 0) {
+		panic(errors.AssertionFailedf("pebble: pending merge ops not drained before mergeNext"))
 	}
 
-	// Save the current key.
+	// Record the snapshot stripe state before iterating forward, as merging
+	// advances the iterator and adjusts curSnapshotIdx and iterStripeChange.
+	origSnapshotIdx := i.curSnapshotIdx
+	origIterStripeChange := i.iterStripeChange
+
+	// Save the current key and buffer the first MERGE operand in case merging
+	// fails and we need to emit the stripe's MERGE operands uncombined.
 	i.saveKey()
+	i.mergeValueBuf = i.mergeValueBuf[:0]
+	i.mergeBufOverflow = false
+	i.saveMergeOp()
+
+	// MERGE values are always stored in-place.
+	valueMerger, mergeErr := i.cfg.Merge(i.iterKV.K.UserKey, i.iterKV.InPlaceValue())
+
+	resultKind := base.InternalKeyKindMerge
+	stoppedAtSameStripeKey := false
 
 	// Loop looking for older values in the current snapshot stripe and merge
-	// them.
-mergeLoop:
-	for {
+	// them. Even if mergeErr becomes non-nil, we continue scanning through all
+	// MERGE operands in the stripe so they can all be emitted uncombined.
+	for !stoppedAtSameStripeKey {
 		stripeChange := i.nextInStripe()
 		if i.err != nil {
 			return nil
 		}
 		if stripeChange != sameStripe {
 			i.pos = iterPosNext
-			break mergeLoop
+			break
 		}
 		// NB: MERGE#10+RANGEDEL#9 stays a MERGE, since nextInStripe skips
 		// sameStripe keys that are visibly covered by a RANGEDEL. There may be
@@ -892,62 +977,61 @@ mergeLoop:
 		key := i.iterKV
 		switch key.Kind() {
 		case base.InternalKeyKindDelete, base.InternalKeyKindSingleDelete, base.InternalKeyKindDeleteSized:
-			// We've hit a deletion tombstone. Return everything up to this point and
-			// then skip entries until the next snapshot stripe. We change the kind
-			// of the result key to a Set so that it shadows keys in lower
-			// levels. That is, MERGE+DEL -> SETWITHDEL.
+			// We've hit a deletion tombstone. When the merge succeeds, we return
+			// everything up to this point as a SETWITHDEL (shadowing keys in
+			// lower levels) and skip remaining entries in the snapshot stripe.
+			// When the merge fails, we stop scanning MERGE operands and leave the
+			// iterator positioned at this tombstone so it is processed normally
+			// after the uncombined MERGE operands are emitted.
 			//
-			// We do the same for SingleDelete since SingleDelete is only
-			// permitted (with deterministic behavior) for keys that have been
-			// set once since the last SingleDelete/Delete, so everything
-			// older is acceptable to shadow. Note that this is slightly
-			// different from singleDeleteNext() which implements stricter
-			// semantics in terms of applying the SingleDelete to the single
-			// next Set. But those stricter semantics are not observable to
+			// On the success path, we do the same for SingleDelete since
+			// SingleDelete is only permitted (with deterministic behavior) for
+			// keys that have been set once since the last SingleDelete/Delete,
+			// so everything older is acceptable to shadow. Note that this is
+			// slightly different from singleDeleteNext() which implements
+			// stricter semantics in terms of applying the SingleDelete to the
+			// single next Set. But those stricter semantics are not observable to
 			// the end-user since Iterator interprets SingleDelete as Delete.
 			// We could do something more complicated here and consume only a
 			// single Set, and then merge in any following Sets, but that is
 			// complicated wrt code and unnecessary given the narrow permitted
 			// use of SingleDelete.
-			i.kv.K.SetKind(base.InternalKeyKindSetWithDelete)
-			i.skip = true
-			break mergeLoop
+			resultKind = base.InternalKeyKindSetWithDelete
+			stoppedAtSameStripeKey = true
 
 		case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
-			// We've hit a Set or SetWithDel value. Merge with the existing
-			// value and return. We change the kind of the resulting key to a
-			// Set so that it shadows keys in lower levels. That is:
-			// MERGE + (SET*) -> SET.
+			// We've hit a Set or SetWithDel value. When the merge succeeds, we
+			// merge with the existing value, change the kind of the resulting key
+			// to a Set so that it shadows keys in lower levels (MERGE + SET* ->
+			// SET), and skip remaining entries in the snapshot stripe. When the
+			// merge fails, we leave the iterator positioned at this Set so it is
+			// processed normally after the uncombined MERGE operands are emitted.
 			//
 			// Because we must merge the value, we must retrieve it regardless
 			// of whether the value is a blob reference.
-			var v []byte
-			var callerOwned bool
-			v, callerOwned, i.err = i.iterKV.Value(i.valueBuf[:0])
-			if i.err != nil {
-				return nil
+			if mergeErr == nil {
+				var v []byte
+				var callerOwned bool
+				v, callerOwned, i.err = i.iterKV.Value(i.valueBuf[:0])
+				if i.err != nil {
+					return nil
+				}
+				if callerOwned && cap(v) > cap(i.valueBuf) {
+					i.valueBuf = v
+				}
+				mergeErr = valueMerger.MergeOlder(v)
 			}
-			if callerOwned && cap(v) > cap(i.valueBuf) {
-				i.valueBuf = v
-			}
-			i.err = valueMerger.MergeOlder(v)
-			if i.err != nil {
-				i.err = base.MarkCorruptionError(i.err)
-				return nil
-			}
-			i.kv.K.SetKind(base.InternalKeyKindSet)
-			i.skip = true
-			break mergeLoop
+			resultKind = base.InternalKeyKindSet
+			stoppedAtSameStripeKey = true
 
 		case base.InternalKeyKindMerge:
-			// We've hit another Merge value. Merge with the existing value and
-			// continue looping.
+			// We've hit another Merge value. Save it in case merging fails, and
+			// merge with the existing value if no merge error has occurred yet.
 			//
 			// MERGE values are always stored in-place.
-			i.err = valueMerger.MergeOlder(i.iterKV.InPlaceValue())
-			if i.err != nil {
-				i.err = base.MarkCorruptionError(i.err)
-				return nil
+			i.saveMergeOp()
+			if mergeErr == nil {
+				mergeErr = valueMerger.MergeOlder(i.iterKV.InPlaceValue())
 			}
 
 		default:
@@ -956,33 +1040,122 @@ mergeLoop:
 		}
 	}
 
-	// If this is the oldest version of this key (the bottommost snapshot
-	// stripe), we can transform the sequence number to zero. This can improve
-	// compression and enables an optimization during forward iteration to skip
-	// some key comparisons. Additionally, we can transform the key kind to
-	// SET so that iteration and future compactions do not need to invoke the
-	// user's Merge operator.
-	if i.isBottommostSnapshotStripe(origSnapshotIdx) {
-		i.kv.K.SetSeqNum(base.SeqNumZero)
-		// During the merge, we may have already transformed the key kind to SET
-		// or SETWITHDEL, in which case we want to preserve the existing key kind.
-		if i.kv.K.Kind() == base.InternalKeyKindMerge {
-			i.kv.K.SetKind(base.InternalKeyKindSet)
+	isBottommost := i.isBottommostSnapshotStripe(origSnapshotIdx)
+	var value base.InternalValue
+	var needDelete bool
+	if mergeErr == nil {
+		// We have merged the oldest operand in this stripe. If this is the
+		// bottommost stripe, that is the oldest operand of the key, and we can
+		// transform a MERGE key kind to SET so that iteration and future
+		// compactions do not need to invoke the user's Merge operator.
+		//
+		// During the merge above, we may have already transformed resultKind to
+		// SET or SETWITHDEL, in which case we preserve that key kind.
+		if isBottommost && resultKind == base.InternalKeyKindMerge {
+			resultKind = base.InternalKeyKindSet
 		}
+
+		// includesBase is true when we've merged the oldest operand in the LSM.
+		includesBase := resultKind != base.InternalKeyKindMerge
+		value, needDelete, i.valueCloser, mergeErr = finishValueMerger(valueMerger, includesBase)
+	}
+	if mergeErr == nil {
+		i.mergeOps = i.mergeOps[:0]
+		// If this is the oldest version of this key (the bottommost
+		// snapshot stripe), we can transform the sequence number to zero.
+		// This can improve compression and enables an optimization during
+		// forward iteration to skip some key comparisons.
+		if isBottommost {
+			i.kv.K.SetSeqNum(base.SeqNumZero)
+		}
+		i.kv.K.SetKind(resultKind)
+		i.kv.V = value
+		if stoppedAtSameStripeKey {
+			i.skip = true
+		}
+		if needDelete {
+			_ = i.closeValueCloser()
+			return nil
+		}
+		return &i.kv
 	}
 
-	// includesBase is true when we've merged the oldest operand in the LSM.
-	includesBase := i.kv.K.Kind() != base.InternalKeyKindMerge
-	var needDelete bool
-	i.kv.V, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, includesBase)
-	if i.err != nil {
-		i.err = base.MarkCorruptionError(i.err)
+	// Merging failed. Close any valueCloser returned by Finish. If the Merger
+	// marked the error as corruption, closing the valueCloser failed, or the
+	// stripe's MERGE operands exceeded maxMergeBufBytes, fail the
+	// compaction.
+	if closeErr := i.closeValueCloser(); closeErr != nil {
+		i.err = errors.CombineErrors(mergeErr, errors.Wrap(closeErr, "closing merge value closer"))
 		return nil
 	}
-	if needDelete {
-		_ = i.closeValueCloser()
+	if base.IsCorruptionError(mergeErr) {
+		i.err = mergeErr
 		return nil
 	}
+	if i.mergeBufOverflow {
+		i.err = base.MarkCorruptionError(errors.Wrapf(mergeErr,
+			"merge failed and stripe operands exceeded %d byte buffer limit",
+			errors.Safe(maxMergeBufBytes)))
+		return nil
+	}
+
+	// Emit the MERGE operands in this stripe uncombined at their original
+	// sequence numbers. Any trailing SET or deletion tombstone in the same
+	// stripe will be processed normally once i.mergeOps is drained.
+	i.stats.CountMergeFailures++
+	i.cfg.MergeFailureCallback(i.kv.K.UserKey, mergeErr)
+	if stoppedAtSameStripeKey {
+		i.pos = iterPosNext
+		// Restore iterStripeChange so the trailing same-stripe key
+		// inherits the stripe's pinned status once mergeOps is drained.
+		i.iterStripeChange = origIterStripeChange
+	}
+	return i.emitPendingMergeOp()
+}
+
+// saveMergeOp appends the current MERGE key's trailer, metadata, and in-place
+// value to i.mergeOps and i.mergeValueBuf so the operand can be emitted
+// uncombined if merging the stripe fails. If buffering the operand would
+// exceed maxMergeBufBytes, saveMergeOp marks mergeBufOverflow and discards
+// the buffered operands for the stripe.
+func (i *Iter) saveMergeOp() {
+	if i.mergeBufOverflow {
+		return
+	}
+	v := i.iterKV.InPlaceValue()
+	if (len(i.mergeOps)+1)*savedMergeOpSize+len(i.mergeValueBuf)+len(v) > maxMergeBufBytes {
+		i.mergeBufOverflow = true
+		i.mergeOps = i.mergeOps[:0]
+		i.mergeValueBuf = i.mergeValueBuf[:0]
+		return
+	}
+	offset := len(i.mergeValueBuf)
+	i.mergeValueBuf = append(i.mergeValueBuf, v...)
+	i.mergeOps = append(i.mergeOps, savedMergeOp{
+		trailer:     i.iterKV.K.Trailer,
+		meta:        i.nextMeta,
+		valueOffset: offset,
+		valueLen:    len(v),
+	})
+}
+
+// emitPendingMergeOp populates i.kv with the next buffered MERGE operand from
+// i.mergeOps[i.mergeOpIdx] and advances i.mergeOpIdx, resetting i.mergeOps when
+// all buffered operands in the stripe have been emitted.
+func (i *Iter) emitPendingMergeOp() *base.InternalKV {
+	op := i.mergeOps[i.mergeOpIdx]
+	i.mergeOpIdx++
+	if i.mergeOpIdx == len(i.mergeOps) {
+		i.mergeOps = i.mergeOps[:0]
+		i.mergeOpIdx = 0
+	}
+	i.kv.K = base.InternalKey{
+		UserKey: i.keyBuf,
+		Trailer: op.trailer,
+	}
+	i.keyTrailer = op.trailer
+	i.currentMeta = op.meta
+	i.kv.V = base.MakeInPlaceValue(i.mergeValueBuf[op.valueOffset : op.valueOffset+op.valueLen])
 	return &i.kv
 }
 
