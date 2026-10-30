@@ -10,6 +10,12 @@ import (
 	"github.com/minio/minlz"
 )
 
+// MinLZFastestFallsBackToSnappy returns true if MinLZFastest compresses with
+// Snappy instead of MinLZ. This happens whenever minlz uses its pure-Go encoder
+// (non-amd64 platforms, or amd64 builds with the purego/noasm tags or a non-gc
+// compiler), which can silently corrupt data (minio/minlz#75).
+func MinLZFastestFallsBackToSnappy() bool { return minlzUsesGoEncoder }
+
 type minlzCompressor struct {
 	level int
 }
@@ -22,6 +28,9 @@ func (c *minlzCompressor) Compress(dst, src []byte) ([]byte, Setting) {
 	// MinLZ cannot encode blocks greater than 8MB. Fall back to Snappy in those
 	// cases.
 	if len(src) > minlz.MaxBlockSize {
+		return (snappyCompressor{}).Compress(dst, src)
+	}
+	if c.level == minlz.LevelFastest && minlzUsesGoEncoder {
 		return (snappyCompressor{}).Compress(dst, src)
 	}
 

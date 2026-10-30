@@ -37,3 +37,31 @@ func TestMinLZLargeBlock(t *testing.T) {
 		d.Close()
 	}
 }
+
+func TestMinLZFastestGoEncoderFallsBackToSnappy(t *testing.T) {
+	b := make([]byte, 64<<10)
+	for i := range b {
+		b[i] = byte(i % 251)
+	}
+	expectedFastest := MinLZFastest
+	if minlzUsesGoEncoder {
+		expectedFastest = SnappySetting
+	}
+	for _, tc := range []struct {
+		setting  Setting
+		expected Setting
+	}{
+		{setting: MinLZFastest, expected: expectedFastest},
+		{setting: MinLZBalanced, expected: MinLZBalanced},
+	} {
+		c := GetCompressor(tc.setting)
+		compressed, st := c.Compress(nil, b)
+		c.Close()
+		require.Equal(t, tc.expected, st)
+		decompressed := make([]byte, len(b))
+		d := GetDecompressor(st.Algorithm)
+		require.NoError(t, d.DecompressInto(decompressed, compressed))
+		d.Close()
+		require.Equal(t, b, decompressed)
+	}
+}

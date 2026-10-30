@@ -121,6 +121,10 @@ var (
 )
 
 // fastestCompression is either Snappy or MinLZ1, depending on the architecture.
+// Note that wherever minlz uses its pure-Go encoder (including all non-amd64
+// platforms), MinLZ1 is never actually used: that encoder can silently corrupt
+// data (minio/minlz#75), so the MinLZ1 compressor falls back to Snappy there
+// regardless of this choice (see compression.MinLZFastestFallsBackToSnappy).
 var fastestCompression = func() compression.Setting {
 	if runtime.GOARCH == "arm64" {
 		// MinLZ is generally faster and better than Snappy except for arm64: Snappy

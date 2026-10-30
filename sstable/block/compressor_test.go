@@ -34,19 +34,19 @@ func TestCompressor(t *testing.T) {
 
 		compressor := MakeCompressor(profile)
 		ci, _ := compressor.Compress(dst, src, blockkind.SSTableData)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.DataBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(expectedAlgorithm(profile.DataBlocks.Setting)), ci)
 
 		ci, _ = compressor.Compress(dst, src, blockkind.SSTableValue)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.ValueBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(expectedAlgorithm(profile.ValueBlocks.Setting)), ci)
 
 		ci, _ = compressor.Compress(dst, src, blockkind.BlobValue)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.ValueBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(expectedAlgorithm(profile.ValueBlocks.Setting)), ci)
 
 		ci, _ = compressor.Compress(dst, src, blockkind.SSTableIndex)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.OtherBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(expectedAlgorithm(profile.OtherBlocks)), ci)
 
 		ci, _ = compressor.Compress(dst, src, blockkind.Metadata)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.OtherBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(expectedAlgorithm(profile.OtherBlocks)), ci)
 
 		compressor.Close()
 	}
@@ -150,4 +150,11 @@ func TestCompressorCopiedBlock(t *testing.T) {
 		require.Error(t, c.CopiedBlock(b, nil))
 		require.True(t, c.Stats().IsEmpty())
 	})
+}
+
+func expectedAlgorithm(s compression.Setting) compression.Algorithm {
+	if s == compression.MinLZFastest && compression.MinLZFastestFallsBackToSnappy() {
+		return compression.Snappy
+	}
+	return s.Algorithm
 }

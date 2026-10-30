@@ -55,7 +55,9 @@ func MakeBlockSize(size int) BlockSize {
 }
 
 // Compressibility indicates how compressible a block is. It is determined by
-// applying MinLZFastest and noting the reduction.
+// applying MinLZFastest and noting the reduction. Where MinLZFastest falls back
+// to Snappy (see compression.MinLZFastestFallsBackToSnappy), the reduction is
+// measured with Snappy.
 type Compressibility uint8
 
 const (
@@ -67,7 +69,7 @@ const (
 )
 
 // Each cutoff is a compression ratio (i.e. uncompressed size / compressed
-// size), based on MinLZFastest.
+// size), based on MinLZFastest (or Snappy, where MinLZFastest falls back to it).
 var compressibilityCutoffs = [...]float64{
 	Incompressible:         0,   // compressed to >90%
 	MarginallyCompressible: 1.1, // compressed to 67-90%
@@ -105,6 +107,9 @@ var Profiles = [...]*block.CompressionProfile{
 		MinReductionPercent: 0,
 	},
 
+	// Where MinLZFastest falls back to Snappy (see
+	// compression.MinLZFastestFallsBackToSnappy), this profile produces Snappy
+	// blocks.
 	{
 		Name:                "MinLZ1",
 		DataBlocks:          block.SimpleCompressionSetting(compression.MinLZFastest),
