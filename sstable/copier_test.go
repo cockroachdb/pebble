@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -303,7 +304,11 @@ func TestCopySpanCompressionStats(t *testing.T) {
 			// The data blocks dominate the stats; make sure the expected settings
 			// are present.
 			require.Contains(t, warm, "None:")
-			require.Contains(t, warm, profile.DataBlocks.Setting.String()+":")
+			expectedSetting := profile.DataBlocks.Setting
+			if expectedSetting == compression.MinLZFastest && compression.MinLZFastestFallsBackToSnappy() {
+				expectedSetting = compression.SnappySetting
+			}
+			require.Contains(t, warm, expectedSetting.String()+":")
 			require.Equal(t, warm, copySpan(0, 0), "cold cache")
 			require.Equal(t, warm, copySpan(400, 600), "partially warm cache")
 		})

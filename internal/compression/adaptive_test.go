@@ -23,13 +23,17 @@ func TestAdaptiveCompressorRand(t *testing.T) {
 		SamplingSeed:    1,
 	})
 	defer ac.Close()
+	expected := MinLZFastest
+	if minlzUsesGoEncoder {
+		expected = SnappySetting
+	}
 	for i := 0; i < 100; i++ {
 		data := make([]byte, 10+rand.IntN(64*1024))
 		for j := range data {
 			data[j] = byte(rand.Uint32())
 		}
 		_, setting := ac.Compress(nil, data)
-		require.Equal(t, MinLZFastest, setting)
+		require.Equal(t, expected, setting)
 	}
 }
 
