@@ -1066,7 +1066,8 @@ a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:5
 b#1,MERGE:1
 
-# NB: Zero values are skipped by deletable merger.
+# Operands merged without their base produce a MERGE, even when they sum to
+# zero.
 define merger=deletable
 a#4,MERGE:-2
 a#3,MERGE:-1
@@ -1083,8 +1084,243 @@ first
 next
 next
 ----
+a#4,MERGE:0
+b#4,MERGE:0
 .
+
+# An elided merge continues the loop after mergeNext has read ahead to b. The
+# DEL returned next sets skip=true, so the following call must start from the
+# DEL's position, not from the merge's read-ahead position.
+define merger=deletable
+a#3,MERGE:-2
+a#2,MERGE:2
+b#5,DEL:
+b#1,SET:1
+c#1,SET:1
+----
+
+iter is-bottommost-layer=true elide-tombstones=true snapshots=4
+first
+next
+next
+next
+----
+b#5,DEL:
+b#0,SET:1
+c#0,SET:1
 .
+
+# A merge that consumes its base SET and resolves to non-existence becomes a
+# DEL. The consumed SET and the rest of the stripe are skipped.
+define merger=deletable
+a#3,MERGE:-2
+a#2,SET:2
+a#1,SET:7
+b#2,SET:5
+----
+
+iter
+first
+next
+next
+----
+a#3,DEL:
+b#2,SET:5
+.
+
+iter elide-tombstones=true
+first
+next
+----
+b#2,SET:5
+.
+
+# A merge that consumes a DEL and resolves to non-existence becomes a DEL.
+define merger=deletable
+a#3,MERGE:-2
+a#2,MERGE:2
+a#1,DEL:
+b#2,SET:5
+----
+
+iter
+first
+next
+next
+----
+a#3,DEL:
+b#2,SET:5
+.
+
+# Operands that sum to zero without the base produce a MERGE. The next key is a
+# DEL, which sets skip=true when it is returned.
+define merger=deletable
+a#3,MERGE:-2
+a#2,MERGE:2
+b#2,DEL:
+c#1,SET:1
+----
+
+iter
+first
+next
+next
+next
+----
+a#3,MERGE:0
+b#2,DEL:
+c#1,SET:1
+.
+
+# A snapshot separates the operands from their base. The newer stripe sums to
+# zero without its base and produces a MERGE. The older stripe is merged with
+# its base.
+define merger=deletable
+a#4,MERGE:-2
+a#3,MERGE:2
+a#2,MERGE:-1
+a#1,SET:5
+b#1,SET:1
+----
+
+iter snapshots=3
+first
+next
+next
+next
+----
+a#4,MERGE:0
+a#2,SET:4
+b#1,SET:1
+.
+
+# The older stripe resolves to non-existence with its base, so it becomes a
+# DEL. The newer stripe is merged without its base.
+define merger=deletable
+a#4,MERGE:3
+a#3,MERGE:2
+a#2,MERGE:-5
+a#1,SET:5
+b#1,SET:1
+----
+
+iter snapshots=3
+first
+next
+next
+next
+----
+a#4,MERGE:5
+a#2,DEL:
+b#1,SET:1
+.
+
+# At the bottom of the LSM, a merge that resolves to non-existence produces no
+# record. Above the bottom, where tombstones cannot be elided, operands without
+# their base produce a MERGE, and a merge that consumes its SET becomes a DEL.
+define merger=deletable
+a#3,MERGE:-2
+a#2,MERGE:2
+b#4,MERGE:-2
+b#3,SET:2
+c#2,SET:5
+----
+
+iter is-bottommost-layer=true elide-tombstones=true
+first
+next
+----
+c#0,SET:5
+.
+
+iter
+first
+next
+next
+next
+----
+a#3,MERGE:0
+b#4,DEL:
+c#2,SET:5
+.
+
+# A range deletion right after operands merged without their base is returned
+# once.
+define merger=deletable
+a#3,MERGE:-2
+a#2,MERGE:2
+b#4,RANGEDEL:c
+c#1,SET:1
+----
+
+iter
+first
+next
+next
+next
+----
+a#3,MERGE:0
+b#inf,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL)}
+c#1,SET:1
+.
+
+# The elision decision uses the merge's own stripe. mergeNext moves on to b in a
+# newer stripe, but a's merge is in the last stripe, so it writes no record.
+define merger=deletable
+a#3,MERGE:-2
+a#2,MERGE:2
+b#5,SET:1
+----
+
+iter is-bottommost-layer=true elide-tombstones=true snapshots=4
+first
+next
+----
+b#5,SET:1
+.
+
+# Outside the last stripe, a merge that resolves to non-existence becomes a DEL
+# that is pinned when only a snapshot keeps it from being elided, as a plain DEL
+# is.
+define merger=deletable
+a#5,MERGE:-2
+a#4,SET:2
+b#5,DEL:
+b#4,SET:2
+----
+
+iter print-snapshot-pinned elide-tombstones=true snapshots=3
+first
+next
+next
+----
+a#5,DEL: (pinned)
+b#5,DEL: (pinned)
+.
+
+# Without a snapshot, a merge that consumes its SET becomes a DEL that is not
+# pinned. When tombstones can be elided, as when no lower level overlaps the key,
+# it produces no record even above the bottom of the LSM.
+define merger=deletable
+a#3,MERGE:-2
+a#2,SET:2
+b#2,SET:5
+----
+
+iter print-snapshot-pinned
+first
+next
+next
+----
+a#3,DEL: (not pinned)
+b#2,SET:5 (not pinned)
+.
+
+iter elide-tombstones=true
+first
+next
+----
+b#2,SET:5
 .
 
 # Test that range keys are interleaved and exposed by the iterator.

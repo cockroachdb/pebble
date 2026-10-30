@@ -43,17 +43,14 @@ func (m *deletableSumValueMerger) MergeOlder(value []byte) error {
 }
 
 func (m *deletableSumValueMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
-	if m.sum == 0 {
-		return nil, nil, nil
-	}
-	return []byte(strconv.FormatInt(m.sum, 10)), nil, nil
+	return strconv.AppendInt(nil, m.sum, 10), nil, nil
 }
 
 func (m *deletableSumValueMerger) DeletableFinish(
 	includesBase bool,
 ) ([]byte, bool, io.Closer, error) {
 	value, closer, err := m.Finish(includesBase)
-	return value, len(value) == 0, closer, err
+	return value, m.sum == 0, closer, err
 }
 
 // FakeKVs constructs InternalKVs from the given key strings, in the format
