@@ -213,19 +213,18 @@ func (c *shard) set(k key, value *Value, markAccessed bool) {
 		// cache entry was a hot or cold page
 		e.setValue(value)
 		e.referenced.Store(true)
-		delta := int64(len(value.buf)) - e.size
+		oldSize := e.size
 		e.size = int64(len(value.buf))
 		if e.ptype == etHot {
 			value.ref.trace("add-hot")
-			c.sizeHot += delta
+			c.sizeHot += e.size - oldSize
 		} else {
-			// TODO(sumeer): unclear why we don't set e.ptype to etHot on this path.
-			// In the default case below, where the state is etTest we set it to
-			// etHot. But etTest is "colder" than etCold, since the only transition
-			// into etTest is etCold => etTest, so since etTest transitions to
-			// etHot, then etCold should also transition.
-			value.ref.trace("add-cold")
-			c.sizeCold += delta
+			e.ptype = etHot
+			value.ref.trace("add-hot")
+			c.sizeCold -= oldSize
+			c.countCold--
+			c.sizeHot += e.size
+			c.countHot++
 		}
 		c.evict()
 
