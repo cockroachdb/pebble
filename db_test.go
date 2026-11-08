@@ -501,6 +501,53 @@ func TestGetMerge(t *testing.T) {
 	require.NoError(t, d.Close())
 }
 
+// TestGetConcurrentCompaction tests a Get that races with a write, flush and
+// compaction which replace the key's value, all completing after the Get
+// starts but before it pins the current version. The Get must return either
+// the old or the new value; reading at a seqnum taken before the version would
+// see the compacted version, which no longer has the old value, without the
+// new one.
+func TestGetConcurrentCompaction(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	var hook func()
+	o := &Options{
+		FS:                          vfs.NewMem(),
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+		Logger:                      testutils.Logger{T: t},
+	}
+	o.private.testingBeforeIterLoadReadStateFunc = func() {
+		if fn := hook; fn != nil {
+			hook = nil
+			fn()
+		}
+	}
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// The snapshot keeps the compaction below from zeroing the seqnum of the
+	// new value, which would make it visible at any seqnum.
+	barrier := d.NewSnapshot()
+	defer func() { require.NoError(t, barrier.Close()) }()
+
+	require.NoError(t, d.Set([]byte("k"), []byte("old"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false /* parallelize */))
+
+	hookRan := false
+	hook = func() {
+		hookRan = true
+		// The compaction merges the new value into L6 and drops the old one,
+		// which the new value shadows.
+		require.NoError(t, d.Set([]byte("k"), []byte("new"), nil))
+		require.NoError(t, d.Flush())
+		require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false /* parallelize */))
+	}
+	verifyGet(t, d, []byte("k"), []byte("new"))
+	require.True(t, hookRan)
+}
+
 func TestMergeOrderSameAfterFlush(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	// Ensure compaction iterator (used by flush) and user iterator process merge

@@ -1251,6 +1251,12 @@ type Options struct {
 		// it was protecting, within that window.
 		testingAfterEFOSAcquireIterStateFunc func()
 
+		// testingBeforeIterLoadReadStateFunc when non-nil, is called by
+		// DB.newIter and DB.getInternal right before they load the current
+		// read state. Used by tests to commit, flush and compact between the
+		// start of a read and the point where it pins the LSM.
+		testingBeforeIterLoadReadStateFunc func()
+
 		// timeNow returns the current time. It defaults to time.Now. It's
 		// configurable here so that tests can mock the current time.
 		timeNow func() time.Time

@@ -63,13 +63,16 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		panic(err)
 	}
 
+	if fn := d.opts.private.testingBeforeIterLoadReadStateFunc; fn != nil {
+		fn()
+	}
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
 	readState := d.loadReadState()
 
 	// Determine the seqnum to read at after grabbing the read state (current and
-	// memtables) above.
+	// memtables) above. See the comment in newIter for why the order matters.
 	var seqNum base.SeqNum
 	if s != nil {
 		seqNum = s.seqNum
