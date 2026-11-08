@@ -1221,6 +1221,12 @@ type Options struct {
 		// it was protecting, within that window.
 		testingAfterEFOSAcquireIterStateFunc func()
 
+		// testingBeforeIterLoadReadStateFunc when non-nil, is called by
+		// DB.newIter and DB.getInternal right before they load the current
+		// read state. Used by tests to commit, flush and compact between the
+		// start of a read and the point where it pins the LSM.
+		testingBeforeIterLoadReadStateFunc func()
+
 		// fsCloser holds a closer that should be invoked after a DB using these
 		// Options is closed. This is used to automatically stop the
 		// long-running goroutine associated with the disk-health-checking FS.
