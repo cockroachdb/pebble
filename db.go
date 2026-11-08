@@ -1073,6 +1073,9 @@ func (d *DB) newIter(
 				readState = newIterOpts.snapshot.readState
 				readState.ref()
 			} else {
+				if fn := d.opts.private.testingBeforeIterLoadReadStateFunc; fn != nil {
+					fn()
+				}
 				// NB: loadReadState() calls readState.ref().
 				readState = d.loadReadState()
 			}
@@ -1081,8 +1084,34 @@ func (d *DB) newIter(
 			newIterOpts.snapshot.vers.Ref()
 		}
 
-		// Determine the seqnum to read at after grabbing the read state (current and
-		// memtables) above.
+		// Determine the seqnum to read at after grabbing the read state (current
+		// and memtables) above. This order ensures that no key visible at the
+		// seqnum was dropped from the pinned version in favor of one that is not.
+		// Compactions, including delete-only ones, read only sstables whose
+		// seqnums were published when they were picked (but see the TODO below),
+		// so they drop a key only in favor of a newer key or range deletion that
+		// was below visibleSeqNum when they were picked. Since visibleSeqNum only
+		// grows, a seqnum loaded after pinning the version sees whatever replaced
+		// each dropped key. A seqnum loaded before could miss it if the
+		// compaction finishes in between, and the read would see neither the
+		// dropped key nor its replacement.
+		//
+		// The read is still not an exact view of the LSM at the seqnum: it misses
+		// keys below the seqnum that were added outside the pinned read state
+		// after it was pinned (e.g. an ingested table), while it sees later keys
+		// written to a pinned memtable. Snapshot reads have neither problem: every
+		// key below the snapshot's seqnum was in the LSM before the read state
+		// was pinned, and compactions preserve the keys visible to registered
+		// snapshots.
+		//
+		// TODO(radu): flushes and ingests break the guarantee above, for snapshot
+		// reads too. A flush can drop a key in favor of a newer key in the same
+		// memtable that is applied but not yet published. A read of the version
+		// the flush installs, at a seqnum taken before that publish, does not see
+		// the newer key, so it sees neither, and can instead see an older value
+		// that both of them hide. Likewise, an ingest adds its sstables to the
+		// version before it publishes their seqnums, and a compaction that reads
+		// them in between can drop keys in favor of the unpublished ones.
 		if seqNum == 0 {
 			seqNum = d.mu.versions.visibleSeqNum.Load()
 		}
