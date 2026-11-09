@@ -102,20 +102,26 @@ func runTests(t *testing.T, path string) {
 
 				// If any args are paths, clone them into the in-memory filesystem. We
 				// only do this the first time we see each particular path (so that the
-				// test can observe any modifications).
+				// test can observe any modifications). A path may reach the tool as the
+				// value of a flag (e.g. --load-blobs-from=<path>), so the flag name is
+				// held aside and reattached to the cloned path.
 				for i := range args {
-					if dest, ok := clonedPaths[args[i]]; ok {
-						args[i] = dest
+					flag, path := "", args[i]
+					if name, value, ok := strings.Cut(args[i], "="); ok && strings.HasPrefix(name, "-") {
+						flag, path = name+"=", value
+					}
+					if dest, ok := clonedPaths[path]; ok {
+						args[i] = flag + dest
 						continue
 					}
 					// Replace path separator in case we are running on Windows.
-					src := strings.Replace(args[i], "/", string(os.PathSeparator), -1)
+					src := strings.Replace(path, "/", string(os.PathSeparator), -1)
 					dest := vfs.Default.PathBase(src)
 					if ok, err := vfs.Clone(vfs.Default, fs, src, dest); err != nil {
 						return err.Error()
 					} else if ok {
-						clonedPaths[args[i]] = dest
-						args[i] = dest
+						clonedPaths[path] = dest
+						args[i] = flag + dest
 					}
 				}
 
