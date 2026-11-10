@@ -536,13 +536,9 @@ type CheckLevelsStats struct {
 //   - Processing of MERGE records does not encounter corruption errors.
 //   - Each sstable's blob reference liveness block is valid.
 func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
-	// Grab and reference the current readState.
-	readState := d.loadReadState()
+	// Grab and reference the current readState, and the seqnum to read it at.
+	readState, seqNum := d.loadReadStateAndSeqNum()
 	defer readState.unref()
-
-	// Determine the seqnum to read at after grabbing the read state (current and
-	// memtables) above.
-	seqNum := d.mu.versions.visibleSeqNum.Load()
 
 	bufferPool := new(block.BufferPool)
 	bufferPool.Init(10, block.ForLevelChecking)
