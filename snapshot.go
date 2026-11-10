@@ -248,11 +248,13 @@ func (d *DB) makeEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFil
 		// overlap with the excise. After releasing DB.mu, in apply, the
 		// ingest-and-excise waits for all the previous EFOSs to transition to FOS
 		// (as a side effect of waiting for a memtable flush to complete). Note,
-		// the visible seqnum is still <= N-1, and will not be bumped to N until
-		// the ingest-and-excise completes. Any EFOS that gets created after
-		// prepare looked at the existing EFOSs, but before the ingest-and-excise
-		// completes, will be created with EventuallyFileOnlySnapshot.seqNum=N-1,
-		// and may not transition to FOS until after the excise, which is
+		// the visible seqnum is still N (so N is not visible), and will not be
+		// bumped past N until the ingest-and-excise publishes its seqnums, which
+		// ingestApply does in the same DB.mu critical section that applies the
+		// excise to the version. Any EFOS that gets created after prepare looked
+		// at the existing EFOSs, but before that publish, will be created with
+		// EventuallyFileOnlySnapshot.seqNum=N, and may not transition to FOS
+		// until after the excise, which is
 		// incorrect (the version at the transition to FOS has already experienced
 		// the excise). To avoid this incorrectness, tryGetSnapshotSeqNum is
 		// called in a loop, until there are no such ongoing excises. The loop can
