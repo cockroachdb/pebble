@@ -29,10 +29,39 @@ type flushable interface {
 	inuseBytes() uint64
 	// totalBytes returns the total number of bytes allocated by the flushable.
 	totalBytes() uint64
-	// readyForFlush returns true when the flushable is ready for flushing. See
-	// memTable.readyForFlush for one implementation which needs to check whether
-	// there are any outstanding write references.
+	// readyForFlush returns true when the flushable has no outstanding writers.
+	// See memTable.readyForFlush for one implementation which needs to check
+	// whether there are any outstanding write references. A flush must also wait
+	// for the flushable's sequence numbers to be published; see
+	// seqNumUpperBound.
 	readyForFlush() bool
+	// seqNumUpperBound returns an exclusive upper bound on the sequence numbers
+	// of the flushable's keys, including keys of batches that are still being
+	// applied (see readyForFlush). It never changes once the flushable is
+	// immutable.
+	//
+	// A flush must not start until visibleSeqNum has reached this bound for
+	// every flushable it flushes. A flush drops every key that is shadowed by a
+	// newer key in the flush and not separated from it by a snapshot in the list
+	// it captures when it starts. Once a sequence number is published, a reader
+	// can read below it, through a snapshot created later or a read that loads
+	// visibleSeqNum before the flush installs its version. Such a reader would
+	// see neither the newer key nor the dropped one. See
+	// DB.readyFlushablesLocked.
+	//
+	// The bound covers only the flushable's own keys. The logSeqNum of the next
+	// flushable in the queue is not a usable bound, because it can cover a
+	// sequence number whose publish waits for this flush. For example, say the
+	// mutable memtable M holds seqnums 90-99, all published (visibleSeqNum is
+	// 100). An ingest that overlaps M and cannot be added to the flushable queue
+	// allocates seqnum 100, rotates M (makeRoomForWrite(nil) starts the new
+	// mutable memtable at logSeqNum 101), and does not publish 100 until M is
+	// flushed. A flush of M that waited for visibleSeqNum to reach 101 would
+	// never start. M's own bound is 100, so its flush can start right away. In
+	// general, AllocateSeqNum waits for every earlier sequence number to be
+	// published before the ingest rotates the memtable, so all of M's sequence
+	// numbers are published by the time the ingest waits for M's flush.
+	seqNumUpperBound() base.SeqNum
 	// computePossibleOverlaps determines whether the flushable's keys overlap
 	// with the bounds of any of the provided bounded items. If an item overlaps
 	// or might overlap but it's not possible to determine overlap cheaply,
@@ -166,6 +195,9 @@ type ingestedFlushable struct {
 	// flush.
 	exciseSpan   KeyRange
 	exciseSeqNum base.SeqNum
+	// seqNumBound is one past the highest sequence number of the excise and
+	// the ingested files. See flushable.seqNumUpperBound.
+	seqNumBound base.SeqNum
 }
 
 func newIngestedFlushable(
@@ -194,6 +226,13 @@ func newIngestedFlushable(
 		physicalFiles = append(physicalFiles, f.PhysicalMeta())
 	}
 
+	// The caller has assigned the files their sequence numbers, all of which are
+	// at or above seqNum.
+	seqNumUpperBound := seqNum + 1
+	for _, f := range files {
+		seqNumUpperBound = max(seqNumUpperBound, f.LargestSeqNum+1)
+	}
+
 	ret := &ingestedFlushable{
 		files:            physicalFiles,
 		comparer:         comparer,
@@ -204,6 +243,7 @@ func newIngestedFlushable(
 		hasRangeKeys: hasRangeKeys,
 		exciseSpan:   exciseSpan,
 		exciseSeqNum: seqNum,
+		seqNumBound:  seqNumUpperBound,
 	}
 
 	return ret
@@ -334,6 +374,11 @@ func (s *ingestedFlushable) readyForFlush() bool {
 	// ingested sstables need an updated view of the Version to
 	// determine where to place the files in the lsm.
 	return true
+}
+
+// seqNumUpperBound is part of the flushable interface.
+func (s *ingestedFlushable) seqNumUpperBound() base.SeqNum {
+	return s.seqNumBound
 }
 
 // computePossibleOverlaps is part of the flushable interface.
