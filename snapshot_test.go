@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"reflect"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -564,3 +566,41 @@ func TestEFOSReadDuringTransition(t *testing.T) {
 		})
 	}
 }
+
+// snapshotReader is the common subset of *Snapshot and *EventuallyFileOnlySnapshot.
+type snapshotReader interface {
+	Get(key []byte) ([]byte, io.Closer, error)
+}
+
+// publishBlocker installs a testingBeforePublishFunc that fires exactly once
+// (after enable() has been called): it signals on entered and then blocks on
+// release. Callers use enable() to arm the hook after setup writes are done,
+// then wait on entered, and finally close release to let publish proceed.
+type publishBlocker struct {
+	enabled atomic.Bool
+	fired   atomic.Bool
+	entered chan struct{}
+	release chan struct{}
+}
+
+func newPublishBlocker() *publishBlocker {
+	return &publishBlocker{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (b *publishBlocker) hook() func() {
+	return func() {
+		if !b.enabled.Load() {
+			return
+		}
+		if b.fired.CompareAndSwap(false, true) {
+			close(b.entered)
+			<-b.release
+		}
+	}
+}
+
+func (b *publishBlocker) enable()  { b.enabled.Store(true) }
+func (b *publishBlocker) unblock() { close(b.release) }
