@@ -2295,6 +2295,10 @@ func (d *DB) ingestApply(
 	// excise without the tables that replace the excised keys. When the commit
 	// pipeline publishes the seqnums after the apply returns, visibleSeqNum is
 	// already past them.
+	//
+	// DB.mu has been held since UpdateVersionLocked installed the tables, so no
+	// compaction or snapshot can observe them unpublished (see
+	// UpdateVersionLocked).
 	publishSeqNum := allocatedSeqNum + base.SeqNum(allocatedCount)
 	if invariants.Enabled {
 		// commitPipeline.AllocateSeqNum waited for every earlier seqnum to be
