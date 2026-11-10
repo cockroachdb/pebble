@@ -1116,6 +1116,15 @@ type Options struct {
 		// obsolete file deletion (to make events deterministic).
 		testingAlwaysWaitForCleanup bool
 
+		// testingBeforePublishFunc when non-nil, is called at the top of
+		// commitPipeline.publish, before visibleSeqNum is bumped. It fires
+		// for both regular commits and ingests (since both publish through
+		// commitPipeline.publish). Used by tests to widen the apply->publish
+		// race window in which a batch's data is already in the memtable /
+		// the ingested sstables are already in the version, but visibleSeqNum
+		// has not yet been advanced.
+		testingBeforePublishFunc func()
+
 		// testingAfterEFOSAcquireIterStateFunc when non-nil, is called by
 		// EventuallyFileOnlySnapshot.acquireIterState after it has captured the
 		// state a new iterator or ScanInternal reads and released the EFOS's

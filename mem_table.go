@@ -85,7 +85,14 @@ type memTable struct {
 	rangeKeys  keySpanCache
 	// The current logSeqNum at the time the memtable was created. This is
 	// guaranteed to be less than or equal to any seqnum stored in the memtable.
-	logSeqNum                    base.SeqNum
+	logSeqNum base.SeqNum
+	// seqNumBound is one past the highest sequence number of the batches that
+	// have reserved space in the memtable (see prepare), whether or not they
+	// have been applied. It is written by prepare, which is serialized by
+	// commitPipeline.mu, and read by the flush scheduler under DB.mu. It stops
+	// changing once the memtable is no longer the mutable memtable. See
+	// flushable.seqNumUpperBound.
+	seqNumBound                  base.AtomicSeqNum
 	releaseAccountingReservation func()
 }
 
@@ -189,6 +196,11 @@ func (m *memTable) readyForFlush() bool {
 	return m.writerRefs.Load() == 0
 }
 
+// seqNumUpperBound is part of the flushable interface.
+func (m *memTable) seqNumUpperBound() base.SeqNum {
+	return m.seqNumBound.Load()
+}
+
 // Prepare reserves space for the batch in the memtable and references the
 // memtable preventing it from being flushed until the batch is applied. Note
 // that prepare is not thread-safe, while apply is. The caller must call
@@ -199,6 +211,8 @@ func (m *memTable) prepare(batch *Batch) error {
 		return arenaskl.ErrArenaFull
 	}
 	m.reserved += uint32(batch.memTableSize)
+	// Batches are prepared in sequence number order, so the bound only grows.
+	m.seqNumBound.Store(batch.SeqNum() + base.SeqNum(batch.Count()))
 
 	m.writerRef()
 	return nil

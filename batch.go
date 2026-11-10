@@ -1884,6 +1884,9 @@ type flushableBatch struct {
 	// The base sequence number for the entries in the batch. This is the same
 	// value as Batch.seqNum() and is cached here for performance.
 	seqNum base.SeqNum
+	// count is the number of sequence numbers the batch consumes, starting at
+	// seqNum. It is the same value as Batch.Count().
+	count uint32
 
 	// A slice of offsets and indices for the entries in the batch. Used to
 	// implement flushableBatchIter. Unlike the indexing on a normal batch, a
@@ -1914,6 +1917,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) (*flushableBatch, error
 		data:     batch.data,
 		cmp:      comparer.Compare,
 		comparer: comparer,
+		count:    batch.Count(),
 		offsets:  make([]flushableBatchEntry, 0, batch.Count()),
 	}
 	if b.data != nil {
@@ -2134,9 +2138,14 @@ func (b *flushableBatch) totalBytes() uint64 {
 
 // readyForFlush is part of the flushable interface.
 func (b *flushableBatch) readyForFlush() bool {
-	// A flushable batch is always ready for flush; it must be flushed together
-	// with the previous memtable.
+	// A flushable batch has no writers; it must be flushed together with the
+	// previous memtable.
 	return true
+}
+
+// seqNumUpperBound is part of the flushable interface.
+func (b *flushableBatch) seqNumUpperBound() base.SeqNum {
+	return b.seqNum + base.SeqNum(b.count)
 }
 
 // computePossibleOverlaps is part of the flushable interface.
