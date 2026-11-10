@@ -7,6 +7,7 @@ package pebble
 import (
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -84,10 +85,10 @@ func (d *DB) loadReadState() *readState {
 
 // loadReadStateAndSeqNum returns the current readState along with the
 // visibleSeqNum to read it at, for a read without a snapshot. Reading the
-// readState at the seqnum is an exact view of the LSM at that seqnum, except
-// for the excise noted below: the readState holds everything visible at the
-// seqnum, and nothing else in it is visible at the seqnum. The returned
-// readState must be unreferenced when the caller is finished with it.
+// readState at the seqnum is an exact view of the LSM at that seqnum: the
+// readState holds everything visible at the seqnum, and nothing else in it is
+// visible at the seqnum. The returned readState must be unreferenced when the
+// caller is finished with it.
 func (d *DB) loadReadStateAndSeqNum() (*readState, base.SeqNum) {
 	// Both loads happen under one RLock, so no readState update falls between
 	// them. Together with the following, that makes the pair exact:
@@ -99,23 +100,23 @@ func (d *DB) loadReadStateAndSeqNum() (*readState, base.SeqNum) {
 	//    such batches, also require commitPipeline.mu, and install the new
 	//    mutable memtable and queue in the readState before releasing it. An
 	//    ingest's tables are either queued as a flushable the same way, or added
-	//    to the version by a readState update before the ingest's seqnums are
-	//    published.
+	//    to the version by a readState update that also publishes the ingest's
+	//    seqnums (see ingestApply).
 	//
-	//  - Keys are hidden by their seqnums. An excise is not: ingestApply applies
-	//    it to the version shortly before its seqnum is published, and a read in
-	//    between sees the excise without the tables that replace the excised
-	//    keys. A queued flushable ingest represents its excise as range deletion
-	//    keys at its own seqnums, which are hidden, and is flushed only after
-	//    its seqnums are published (see flushable.seqNumUpperBound).
+	//  - Keys are hidden by their seqnums. An excise is not, so it enters the
+	//    version only once its seqnum is published: ingestApply publishes it in
+	//    the readState update that applies the excise, and a queued flushable
+	//    ingest, which represents its excise as range deletion keys at its own
+	//    seqnums, is flushed only after its seqnums are published (see
+	//    flushable.seqNumUpperBound).
 	//
 	//  - The flushes and compactions the readState reflects dropped only keys
 	//    shadowed at the seqnum. A flush starts only once every seqnum it
 	//    flushes is published (see flushable.seqNumUpperBound), and compactions,
-	//    including delete-only ones, read only published sstables (but see the
-	//    TODO below), so they drop a key only in favor of a newer key or range
-	//    deletion that was below visibleSeqNum when they started. visibleSeqNum
-	//    only grows, so the seqnum sees whatever replaced each dropped key.
+	//    including delete-only ones, read only published sstables, so they drop
+	//    a key only in favor of a newer key or range deletion that was below
+	//    visibleSeqNum when they started. visibleSeqNum only grows, so the seqnum
+	//    sees whatever replaced each dropped key.
 	//
 	// Loading the seqnum before the readState would break the last point: a
 	// flush or compaction finishing in between could drop keys visible at the
@@ -124,11 +125,6 @@ func (d *DB) loadReadStateAndSeqNum() (*readState, base.SeqNum) {
 	// the two loads: an ingest could add its tables to the version and publish
 	// its seqnums in between, and the read would miss the ingested keys while
 	// seeing later writes to a memtable in the readState.
-	//
-	// TODO(radu): ingests break the last point, for snapshot reads too. An
-	// ingest adds its sstables to the version before it publishes their
-	// seqnums, and a compaction that reads them in between can drop keys in
-	// favor of the unpublished ones.
 	d.readState.RLock()
 	state := d.readState.val
 	state.ref()
@@ -144,6 +140,21 @@ func (d *DB) loadReadStateAndSeqNum() (*readState, base.SeqNum) {
 // list of memtables. Requires DB.mu is held. If checker is not nil, it is
 // called after installing the new readState.
 func (d *DB) updateReadStateLocked(checker func(*DB) error) {
+	d.updateReadStateAndPublishLocked(checker, 0 /* publishSeqNum */)
+}
+
+// updateReadStateAndPublishLocked is like updateReadStateLocked, but if
+// publishSeqNum is non-zero it also advances visibleSeqNum to publishSeqNum
+// (if it is not there already) while installing the new readState, so that
+// loadReadStateAndSeqNum observes both changes or neither. publishSeqNum must
+// not exceed logSeqNum. Requires DB.mu is held.
+func (d *DB) updateReadStateAndPublishLocked(checker func(*DB) error, publishSeqNum base.SeqNum) {
+	if publishSeqNum != 0 {
+		if logSeqNum := d.mu.versions.logSeqNum.Load(); publishSeqNum > logSeqNum {
+			panic(errors.AssertionFailedf("pebble: publish to %d is ahead of logSeqNum %d",
+				errors.Safe(publishSeqNum), errors.Safe(logSeqNum)))
+		}
+	}
 	s := &readState{
 		db:        d,
 		current:   d.mu.versions.currentVersion(),
@@ -158,6 +169,14 @@ func (d *DB) updateReadStateLocked(checker func(*DB) error) {
 	d.readState.Lock()
 	old := d.readState.val
 	d.readState.val = s
+	for publishSeqNum != 0 {
+		// The CAS loop keeps visibleSeqNum monotonic even if another publish
+		// races with this one, as in commitPipeline.publish.
+		cur := d.mu.versions.visibleSeqNum.Load()
+		if publishSeqNum <= cur || d.mu.versions.visibleSeqNum.CompareAndSwap(cur, publishSeqNum) {
+			break
+		}
+	}
 	d.readState.Unlock()
 	if checker != nil {
 		if err := checker(d); err != nil {

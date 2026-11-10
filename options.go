@@ -1117,12 +1117,13 @@ type Options struct {
 		testingAlwaysWaitForCleanup bool
 
 		// testingBeforePublishFunc when non-nil, is called at the top of
-		// commitPipeline.publish, before visibleSeqNum is bumped. It fires
-		// for both regular commits and ingests (since both publish through
-		// commitPipeline.publish). Used by tests to widen the apply->publish
-		// race window in which a batch's data is already in the memtable /
-		// the ingested sstables are already in the version, but visibleSeqNum
-		// has not yet been advanced.
+		// commitPipeline.publish. It fires for both regular commits and
+		// ingests (since both publish through commitPipeline.publish). Used
+		// by tests to widen the apply->publish race window in which a batch's
+		// data is already in the memtable, but visibleSeqNum has not yet been
+		// advanced. An ingest that installs its sstables in the version has
+		// already advanced visibleSeqNum when this is called (see
+		// DB.ingestApply).
 		testingBeforePublishFunc func()
 
 		// testingAfterEFOSAcquireIterStateFunc when non-nil, is called by

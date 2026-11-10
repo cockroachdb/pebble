@@ -816,6 +816,180 @@ func TestReadConcurrentIngestAndWriteStress(t *testing.T) {
 	require.Zero(t, d.Metrics().Flush.AsIngestCount)
 }
 
+// TestReadConcurrentIngestAndExcise tests reads without a snapshot that run
+// while an IngestAndExcise is held in commitPipeline.publish. The reads must see
+// either the excised value or the ingested one that replaces it, never neither.
+// An ingest that adds its tables to the version publishes its seqnums as it
+// does so, before commitPipeline.publish, so the reads see the ingested value.
+// An ingest queued as a flushable is not flushed, which would apply its excise
+// to the version, until its seqnums are published, so the reads see the
+// excised value.
+func TestReadConcurrentIngestAndExcise(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	for _, flushable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("flushable=%t", flushable), func(t *testing.T) {
+			var hook func()
+			o := &Options{
+				FS:                          vfs.NewMem(),
+				DisableAutomaticCompactions: true,
+				FormatMajorVersion:          FormatNewest,
+				Logger:                      testLogger{t: t},
+			}
+			o.private.testingBeforePublishFunc = func() {
+				if fn := hook; fn != nil {
+					hook = nil
+					fn()
+				}
+			}
+			d, err := Open("", o)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, d.Close()) }()
+
+			require.NoError(t, d.Set([]byte("k"), []byte("old"), nil))
+			require.NoError(t, d.Flush())
+			want := []string{"k=new"}
+			if flushable {
+				// The ingest overlaps the memtable, so it is queued as a flushable.
+				// Otherwise the memtable is empty, and the ingest applies the excise
+				// to the version.
+				require.NoError(t, d.Set([]byte("m"), []byte("mem"), nil))
+				want = []string{"k=old", "m=mem"}
+			}
+
+			f, err := d.opts.FS.Create("ext", vfs.WriteCategoryUnspecified)
+			require.NoError(t, err)
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f),
+				d.opts.MakeWriterOptions(0, d.TableFormat()))
+			require.NoError(t, w.Set([]byte("k"), []byte("new")))
+			require.NoError(t, w.Close())
+
+			read := func() []string {
+				var kvs []string
+				if v, closer, err := d.Get([]byte("k")); err != nil {
+					kvs = append(kvs, "get: "+err.Error())
+				} else {
+					kvs = append(kvs, "k="+string(v))
+					if err := closer.Close(); err != nil {
+						kvs = append(kvs, err.Error())
+					}
+				}
+				iter, err := d.NewIter(nil)
+				if err != nil {
+					return append(kvs, err.Error())
+				}
+				for valid := iter.First(); valid; valid = iter.Next() {
+					kvs = append(kvs, fmt.Sprintf("%s=%s", iter.Key(), iter.Value()))
+				}
+				if err := iter.Close(); err != nil {
+					kvs = append(kvs, err.Error())
+				}
+				return kvs
+			}
+			// The hook runs inside the ingest, so it records what it reads rather
+			// than failing the test there.
+			var got []string
+			hook = func() {
+				if flushable {
+					// Give the flush that the ingest scheduled a chance to run. It
+					// must not run before the ingest's seqnums are published.
+					for range 50 {
+						if d.Metrics().Flush.AsIngestCount > 0 {
+							break
+						}
+						time.Sleep(time.Millisecond)
+					}
+				}
+				got = read()
+			}
+			_, err = d.IngestAndExcise(context.Background(), []string{"ext"}, nil, nil,
+				KeyRange{Start: []byte("a"), End: []byte("z")})
+			require.NoError(t, err)
+			require.Nil(t, hook, "hook did not run")
+			require.Equal(t, append([]string{want[0]}, want...), got)
+			if flushable {
+				require.NoError(t, d.Flush())
+				require.Equal(t, uint64(1), d.Metrics().Flush.AsIngestCount)
+			}
+			verifyGet(t, d, []byte("k"), []byte("new"))
+		})
+	}
+}
+
+// TestReadConcurrentIngestAndExciseStress runs reads without a snapshot
+// concurrently with a writer that repeatedly replaces k with IngestAndExcise.
+// Every read must find k.
+func TestReadConcurrentIngestAndExciseStress(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	for _, flushable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("flushable=%t", flushable), func(t *testing.T) {
+			d, err := Open("", &Options{
+				FS:                          vfs.NewMem(),
+				DisableAutomaticCompactions: true,
+				FormatMajorVersion:          FormatNewest,
+				Logger:                      testLogger{t: t},
+			})
+			require.NoError(t, err)
+			defer func() { require.NoError(t, d.Close()) }()
+			require.NoError(t, d.Set([]byte("k"), []byte("v"), nil))
+			require.NoError(t, d.Flush())
+
+			const numIngests = 500
+			var stop atomic.Bool
+			var reads, anomalies atomic.Int64
+			errCh := make(chan error, 4)
+			var wg sync.WaitGroup
+			for range 4 {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for !stop.Load() {
+						_, closer, err := d.Get([]byte("k"))
+						if errors.Is(err, ErrNotFound) {
+							anomalies.Add(1)
+						} else if err != nil {
+							errCh <- err
+							return
+						} else if err := closer.Close(); err != nil {
+							errCh <- err
+							return
+						}
+						reads.Add(1)
+					}
+				}()
+			}
+			for i := range numIngests {
+				path := fmt.Sprintf("ext%d", i)
+				f, err := d.opts.FS.Create(path, vfs.WriteCategoryUnspecified)
+				require.NoError(t, err)
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f),
+					d.opts.MakeWriterOptions(0, d.TableFormat()))
+				require.NoError(t, w.Set([]byte("k"), fmt.Appendf(nil, "v%d", i)))
+				require.NoError(t, w.Close())
+				if flushable {
+					// Overlap the memtable so the ingest is queued as a flushable.
+					require.NoError(t, d.Set([]byte("k"), []byte("mem"), nil))
+				}
+				_, err = d.IngestAndExcise(context.Background(), []string{path}, nil, nil,
+					KeyRange{Start: []byte("a"), End: []byte("z")})
+				require.NoError(t, err)
+			}
+			stop.Store(true)
+			wg.Wait()
+			close(errCh)
+			for err := range errCh {
+				require.NoError(t, err)
+			}
+			require.Positive(t, reads.Load())
+			require.Zero(t, anomalies.Load(), "%d of %d reads did not find k", anomalies.Load(), reads.Load())
+			if flushable {
+				require.Positive(t, d.Metrics().Flush.AsIngestCount)
+			} else {
+				require.Zero(t, d.Metrics().Flush.AsIngestCount)
+			}
+		})
+	}
+}
+
 func TestMergeOrderSameAfterFlush(t *testing.T) {
 	// Ensure compaction iterator (used by flush) and user iterator process merge
 	// operands in the same order

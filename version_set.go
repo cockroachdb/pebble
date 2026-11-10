@@ -49,6 +49,12 @@ type versionSet struct {
 	// suffix of these sequence numbers may not have been written to a WAL. Both
 	// logSeqNum and visibleSeqNum are atomically updated by the commitPipeline.
 	// visibleSeqNum is <= logSeqNum.
+	//
+	// The commitPipeline allocates a dense range of sequence numbers per
+	// operation and publishes those ranges in allocation order. An ingest that
+	// adds its tables to the version publishes its own range a little earlier,
+	// in the readState update that installs the tables (see DB.ingestApply); the
+	// commitPipeline's publish of the range is then a no-op.
 	visibleSeqNum base.AtomicSeqNum
 
 	// Number of bytes present in sstables being written by in-progress
