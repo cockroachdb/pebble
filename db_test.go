@@ -547,6 +547,284 @@ func TestGetConcurrentCompaction(t *testing.T) {
 	require.True(t, hookRan)
 }
 
+// TestGetConcurrentIngestAndMerge tests a Get without a snapshot that races
+// with an ingest of k, which adds a table to the version, followed by a merge
+// into k, which goes into the mutable memtable. Both happen after the Get loads
+// the read state (version and memtables) and its seqnum, but before it reads
+// them. The Get must be an exact view of the LSM at its seqnum, so it must not
+// return the merge operand without the ingested value beneath it, a value k
+// never had.
+func TestGetConcurrentIngestAndMerge(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	var hook func()
+	o := &Options{
+		FS:                          vfs.NewMem(),
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+		Logger:                      testutils.Logger{T: t},
+	}
+	o.private.testingAfterLoadReadStateAndSeqNumFunc = func() {
+		if fn := hook; fn != nil {
+			hook = nil
+			fn()
+		}
+	}
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	f, err := d.opts.FS.Create("ext", vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f),
+		d.opts.MakeWriterOptions(0, d.TableFormat()))
+	require.NoError(t, w.Set([]byte("k"), []byte("ingested")))
+	require.NoError(t, w.Close())
+
+	hookRan := false
+	hook = func() {
+		hookRan = true
+		// The memtable is empty, so the ingest adds its table straight to the
+		// version rather than queueing it as a flushable.
+		require.NoError(t, d.Ingest(context.Background(), []string{"ext"}))
+		require.NoError(t, d.Merge([]byte("k"), []byte("+merged"), nil))
+	}
+	// The Get's seqnum predates both changes, so it sees neither. A Get that
+	// sees only the merge returns "+merged".
+	verifyGetNotFound(t, d, []byte("k"))
+	require.True(t, hookRan)
+	verifyGet(t, d, []byte("k"), []byte("ingested+merged"))
+}
+
+// TestGetConcurrentIngestAndMergeStress runs Gets without a snapshot
+// concurrently with a writer that ingests k<i>, which adds a table straight to
+// the version, and then merges into k<i> in the memtable. A Get of k<i> must
+// return a value k<i> had: not found, the ingested value, or the ingested value
+// with the merge operand. A Get that sees the merge without the ingested table
+// returns the merge operand alone.
+func TestGetConcurrentIngestAndMergeStress(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	d, err := Open("", &Options{
+		FS:                          vfs.NewMem(),
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+		Logger:                      testutils.Logger{T: t},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	const numIngests = 3000
+	// cur is the index of the latest ingest the writer has started.
+	var cur atomic.Int64
+	var stop atomic.Bool
+	var reads, anomalies atomic.Int64
+	errCh := make(chan error, 4)
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for !stop.Load() {
+				v, closer, err := d.Get(fmt.Appendf(nil, "k%06d", cur.Load()))
+				if err == nil {
+					if s := string(v); s != "ingested" && s != "ingested+merged" {
+						anomalies.Add(1)
+					}
+					err = closer.Close()
+				} else if errors.Is(err, ErrNotFound) {
+					err = nil
+				}
+				if err != nil {
+					errCh <- err
+					return
+				}
+				reads.Add(1)
+			}
+		}()
+	}
+	for i := range numIngests {
+		key := fmt.Appendf(nil, "k%06d", i)
+		path := fmt.Sprintf("ext%d", i)
+		f, err := d.opts.FS.Create(path, vfs.WriteCategoryUnspecified)
+		require.NoError(t, err)
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f),
+			d.opts.MakeWriterOptions(0, d.TableFormat()))
+		require.NoError(t, w.Set(key, []byte("ingested")))
+		require.NoError(t, w.Close())
+		cur.Store(int64(i))
+		// The memtable only holds merges into earlier keys, which sort before
+		// k<i>, so the ingest does not overlap the memtable and adds its table
+		// straight to the version.
+		require.NoError(t, d.Ingest(context.Background(), []string{path}))
+		require.NoError(t, d.Merge(key, []byte("+merged"), nil))
+	}
+	stop.Store(true)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+	require.Positive(t, reads.Load())
+	require.Zero(t, anomalies.Load(), "%d of %d Gets returned a value k<i> never had", anomalies.Load(), reads.Load())
+	require.Zero(t, d.Metrics().Flush.AsIngestCount)
+}
+
+// TestReadConcurrentIngestAndWrite tests reads without a snapshot that race
+// with an ingest, which adds a table to the version, followed by a write, which
+// goes into the mutable memtable. Both happen after the read loads the read
+// state (version and memtables) and its seqnum, but before it constructs its
+// iterator. The read must be an exact view of the LSM at its seqnum, so it must
+// not see the write without the earlier ingested key.
+func TestReadConcurrentIngestAndWrite(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	readers := []struct {
+		name string
+		read func(t *testing.T, d *DB) []string
+	}{
+		{
+			name: "iter",
+			read: func(t *testing.T, d *DB) []string {
+				iter, err := d.NewIter(nil)
+				require.NoError(t, err)
+				var keys []string
+				for valid := iter.First(); valid; valid = iter.Next() {
+					keys = append(keys, string(iter.Key()))
+				}
+				require.NoError(t, iter.Close())
+				return keys
+			},
+		},
+		{
+			name: "scan-internal",
+			read: func(t *testing.T, d *DB) []string {
+				var keys []string
+				require.NoError(t, d.ScanInternal(context.Background(), ScanInternalOptions{
+					VisitPointKey: func(key *InternalKey, _ LazyValue, _ IteratorLevel) error {
+						keys = append(keys, string(key.UserKey))
+						return nil
+					},
+				}))
+				return keys
+			},
+		},
+	}
+	for _, r := range readers {
+		t.Run(r.name, func(t *testing.T) {
+			var hook func()
+			o := &Options{
+				FS:                          vfs.NewMem(),
+				DisableAutomaticCompactions: true,
+				FormatMajorVersion:          FormatNewest,
+				Logger:                      testutils.Logger{T: t},
+			}
+			o.private.testingAfterLoadReadStateAndSeqNumFunc = func() {
+				if fn := hook; fn != nil {
+					hook = nil
+					fn()
+				}
+			}
+			d, err := Open("", o)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, d.Close()) }()
+
+			f, err := d.opts.FS.Create("ext", vfs.WriteCategoryUnspecified)
+			require.NoError(t, err)
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f),
+				d.opts.MakeWriterOptions(0, d.TableFormat()))
+			require.NoError(t, w.Set([]byte("k"), []byte("ingested")))
+			require.NoError(t, w.Close())
+
+			hookRan := false
+			hook = func() {
+				hookRan = true
+				// The memtable is empty, so the ingest adds its table straight to
+				// the version rather than queueing it as a flushable.
+				require.NoError(t, d.Ingest(context.Background(), []string{"ext"}))
+				require.NoError(t, d.Set([]byte("j"), []byte("later"), nil))
+			}
+			keys := r.read(t, d)
+			require.True(t, hookRan)
+			// The read's seqnum predates both changes, so it sees neither. A read
+			// that sees only the later write misses the ingest.
+			require.Empty(t, keys)
+			require.Equal(t, []string{"j", "k"}, r.read(t, d))
+		})
+	}
+}
+
+// TestReadConcurrentIngestAndWriteStress runs reads without a snapshot
+// concurrently with a writer that alternates between ingesting k<i>, which adds
+// a table straight to the version, and writing j<i> to the memtable. A read
+// that sees j<i> must see k<i>, which has a lower seqnum.
+func TestReadConcurrentIngestAndWriteStress(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	d, err := Open("", &Options{
+		FS:                          vfs.NewMem(),
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+		Logger:                      testutils.Logger{T: t},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	const numIngests = 3000
+	// cur is the index of the latest ingest the writer has started.
+	var cur atomic.Int64
+	var stop atomic.Bool
+	var reads, anomalies atomic.Int64
+	errCh := make(chan error, 4)
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for !stop.Load() {
+				c := cur.Load()
+				iter, err := d.NewIter(nil)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				for _, n := range []int64{c - 1, c} {
+					jKey, kKey := fmt.Appendf(nil, "j%06d", n), fmt.Appendf(nil, "k%06d", n)
+					hasJ := iter.SeekGE(jKey) && bytes.Equal(iter.Key(), jKey)
+					hasK := iter.SeekGE(kKey) && bytes.Equal(iter.Key(), kKey)
+					if hasJ && !hasK {
+						anomalies.Add(1)
+					}
+				}
+				if err := iter.Close(); err != nil {
+					errCh <- err
+					return
+				}
+				reads.Add(1)
+			}
+		}()
+	}
+	for i := range numIngests {
+		path := fmt.Sprintf("ext%d", i)
+		f, err := d.opts.FS.Create(path, vfs.WriteCategoryUnspecified)
+		require.NoError(t, err)
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f),
+			d.opts.MakeWriterOptions(0, d.TableFormat()))
+		require.NoError(t, w.Set(fmt.Appendf(nil, "k%06d", i), []byte("ingested")))
+		require.NoError(t, w.Close())
+		cur.Store(int64(i))
+		// The k keys sort before the j keys in the memtable, so the ingest does
+		// not overlap the memtable and adds its table straight to the version.
+		require.NoError(t, d.Ingest(context.Background(), []string{path}))
+		require.NoError(t, d.Set(fmt.Appendf(nil, "j%06d", i), []byte("later"), nil))
+	}
+	stop.Store(true)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+	require.Positive(t, reads.Load())
+	require.Zero(t, anomalies.Load(), "%d of %d reads saw j<i> without k<i>", anomalies.Load(), reads.Load())
+	require.Zero(t, d.Metrics().Flush.AsIngestCount)
+}
+
 func TestMergeOrderSameAfterFlush(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	// Ensure compaction iterator (used by flush) and user iterator process merge
