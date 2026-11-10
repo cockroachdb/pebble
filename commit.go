@@ -142,9 +142,10 @@ type commitEnv struct {
 	write func(b *Batch, wg *sync.WaitGroup, err *error) (*memTable, error)
 
 	// testingBeforePublish, if non-nil, is invoked at the top of
-	// commitPipeline.publish, before visibleSeqNum is bumped. It fires for
-	// both regular commits and ingests (both route through publish). Used
-	// by tests to widen the apply->publish race window.
+	// commitPipeline.publish. It fires for both regular commits and ingests
+	// (both route through publish). Used by tests to widen the apply->publish
+	// race window. An ingest that installs its sstables in the version has
+	// already advanced visibleSeqNum by then (see DB.ingestApply).
 	testingBeforePublish func()
 
 	// afterPublish is invoked at the end of publish, after visibleSeqNum has been
