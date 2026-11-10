@@ -251,7 +251,15 @@ type Iterator struct {
 	newIters         tableNewIters
 	newIterRangeKey  keyspanimpl.TableNewSpanIter
 	lazyCombinedIter lazyCombinedIter
-	seqNum           base.SeqNum
+	// seqNum determines which keys are visible to the iterator: only keys
+	// with sequence numbers below seqNum are visible. Snapshots and EFOS
+	// provide an explicit value; for regular iterators it is loaded from
+	// visibleSeqNum during construction, together with the readState, which
+	// makes the iterator an exact view of the LSM at seqNum (see
+	// DB.loadReadStateAndSeqNum). A regular iterator is not registered in
+	// d.mu.snapshots, so the readState's refs are the only thing preserving
+	// the history it reads.
+	seqNum base.SeqNum
 	// batchSeqNum is used by Iterators over indexed batches to detect when the
 	// underlying batch has been mutated. The batch beneath an indexed batch may
 	// be mutated while the Iterator is open, but new keys are not surfaced

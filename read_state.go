@@ -4,13 +4,19 @@
 
 package pebble
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/cockroachdb/pebble/internal/base"
+)
 
 // readState encapsulates the state needed for reading (the current version and
 // list of memtables). Loading the readState is done without grabbing
 // DB.mu. Instead, a separate DB.readState.RWMutex is used for
-// synchronization. This mutex solely covers the current readState object which
-// means it is rarely or ever contended.
+// synchronization. This mutex covers the current readState object, which
+// means it is rarely or ever contended. Readers without a snapshot also load
+// visibleSeqNum under it, so that no readState update falls between the two
+// loads (see loadReadStateAndSeqNum).
 //
 // Note that various fancy lock-free mechanisms can be imagined for loading the
 // readState, but benchmarking showed the ones considered to purely be
@@ -74,6 +80,64 @@ func (d *DB) loadReadState() *readState {
 	state.ref()
 	d.readState.RUnlock()
 	return state
+}
+
+// loadReadStateAndSeqNum returns the current readState along with the
+// visibleSeqNum to read it at, for a read without a snapshot. Reading the
+// readState at the seqnum is an exact view of the LSM at that seqnum, except
+// for the excise noted below: the readState holds everything visible at the
+// seqnum, and nothing else in it is visible at the seqnum. The returned
+// readState must be unreferenced when the caller is finished with it.
+func (d *DB) loadReadStateAndSeqNum() (*readState, base.SeqNum) {
+	// Both loads happen under one RLock, so no readState update falls between
+	// them. Together with the following, that makes the pair exact:
+	//
+	//  - Every change is in the readState by the time its seqnum is published.
+	//    A batch reserves space in the mutable memtable while holding
+	//    commitPipeline.mu, and is applied and published after that. A large
+	//    batch is instead queued as a flushable. Memtable rotations, which queue
+	//    such batches, also require commitPipeline.mu, and install the new
+	//    mutable memtable and queue in the readState before releasing it. An
+	//    ingest's tables are either queued as a flushable the same way, or added
+	//    to the version by a readState update before the ingest's seqnums are
+	//    published.
+	//
+	//  - Keys are hidden by their seqnums. An excise is not: ingestApply applies
+	//    it to the version shortly before its seqnum is published, and a read in
+	//    between sees the excise without the tables that replace the excised
+	//    keys. A queued flushable ingest represents its excise as range deletion
+	//    keys at its own seqnums, which are hidden, and is flushed only after
+	//    its seqnums are published (see flushable.seqNumUpperBound).
+	//
+	//  - The flushes and compactions the readState reflects dropped only keys
+	//    shadowed at the seqnum. A flush starts only once every seqnum it
+	//    flushes is published (see flushable.seqNumUpperBound), and compactions,
+	//    including delete-only ones, read only published sstables (but see the
+	//    TODO below), so they drop a key only in favor of a newer key or range
+	//    deletion that was below visibleSeqNum when they started. visibleSeqNum
+	//    only grows, so the seqnum sees whatever replaced each dropped key.
+	//
+	// Loading the seqnum before the readState would break the last point: a
+	// flush or compaction finishing in between could drop keys visible at the
+	// seqnum in favor of newer ones that are not. Loading it after the
+	// readState, outside the RLock, would let a readState update fall between
+	// the two loads: an ingest could add its tables to the version and publish
+	// its seqnums in between, and the read would miss the ingested keys while
+	// seeing later writes to a memtable in the readState.
+	//
+	// TODO(radu): ingests break the last point, for snapshot reads too. An
+	// ingest adds its sstables to the version before it publishes their
+	// seqnums, and a compaction that reads them in between can drop keys in
+	// favor of the unpublished ones.
+	d.readState.RLock()
+	state := d.readState.val
+	state.ref()
+	seqNum := d.mu.versions.visibleSeqNum.Load()
+	d.readState.RUnlock()
+	if fn := d.opts.private.testingAfterLoadReadStateAndSeqNumFunc; fn != nil {
+		fn()
+	}
+	return state, seqNum
 }
 
 // updateReadStateLocked creates a new readState from the current version and
