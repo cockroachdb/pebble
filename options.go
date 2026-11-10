@@ -1266,6 +1266,12 @@ type Options struct {
 		// start of a read and the point where it pins the LSM.
 		testingBeforeIterLoadReadStateFunc func()
 
+		// testingAfterLoadReadStateAndSeqNumFunc when non-nil, is called by
+		// DB.loadReadStateAndSeqNum after it loads the read state and seqnum,
+		// before it returns them. Used by tests to change the LSM between the
+		// point where a read pins the LSM and its use of the pinned state.
+		testingAfterLoadReadStateAndSeqNumFunc func()
+
 		// timeNow returns the current time. It defaults to time.Now. It's
 		// configurable here so that tests can mock the current time.
 		timeNow func() time.Time
