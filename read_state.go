@@ -113,10 +113,11 @@ func (d *DB) loadReadStateAndSeqNum() (*readState, base.SeqNum) {
 	//  - The flushes and compactions the readState reflects dropped only keys
 	//    shadowed at the seqnum. A flush starts only once every seqnum it
 	//    flushes is published (see flushable.seqNumUpperBound), and compactions,
-	//    including delete-only ones, read only published sstables, so they drop
-	//    a key only in favor of a newer key or range deletion that was below
-	//    visibleSeqNum when they started. visibleSeqNum only grows, so the seqnum
-	//    sees whatever replaced each dropped key.
+	//    including delete-only ones, read only published sstables (see
+	//    versionSet.logAndApply), so they drop a key only in favor of a newer
+	//    key or range deletion that was below visibleSeqNum when they started.
+	//    visibleSeqNum only grows, so the seqnum sees whatever replaced each
+	//    dropped key.
 	//
 	// Loading the seqnum before the readState would break the last point: a
 	// flush or compaction finishing in between could drop keys visible at the
