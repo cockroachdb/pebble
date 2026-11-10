@@ -1699,6 +1699,11 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		err = d.handleIngestAsFlushable(fileMetas, seqNum, args.ExciseSpan)
 	}
 
+	seqNumCount := loadResult.fileCount()
+	if args.ExciseSpan.Valid() {
+		seqNumCount++
+	}
+
 	var ve *manifest.VersionEdit
 	var waitFlushDuration time.Duration
 	var manifestUpdateDuration time.Duration
@@ -1714,6 +1719,10 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			}
 			return
 		}
+
+		// The first of the seqNumCount seqnums this ingest allocated from the
+		// commit pipeline.
+		allocatedSeqNum := seqNum
 
 		// If there's an excise being done atomically with the same ingest, we
 		// assign the lowest sequence number in the set of sequence numbers for this
@@ -1751,7 +1760,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		}
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, manifestUpdateDuration, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, seqNum)
+		ve, manifestUpdateDuration, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, allocatedSeqNum, seqNumCount, seqNum)
 	}
 
 	// Only one ingest can occur at a time because if not, one would block waiting
@@ -1759,10 +1768,6 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	// the commit mutex which would prevent unrelated batches from writing their
 	// changes to the WAL and memtable. This will cause a bigger commit hiccup
 	// during ingestion.
-	seqNumCount := loadResult.fileCount()
-	if args.ExciseSpan.Valid() {
-		seqNumCount++
-	}
 	d.commit.ingestSem <- struct{}{}
 	d.commit.AllocateSeqNum(seqNumCount, prepare, apply)
 	<-d.commit.ingestSem
@@ -1979,6 +1984,8 @@ func (d *DB) ingestApply(
 	mut *memTable,
 	exciseSpan KeyRange,
 	exciseBoundsPolicy exciseBoundsPolicy,
+	allocatedSeqNum base.SeqNum,
+	allocatedCount int,
 	exciseSeqNum base.SeqNum,
 ) (*manifest.VersionEdit, time.Duration, error) {
 	d.mu.Lock()
@@ -2282,8 +2289,24 @@ func (d *DB) ingestApply(
 
 	d.mu.versions.metrics.Ingest.Count++
 
-	d.updateReadStateLocked(d.opts.DebugCheck)
-	// updateReadStateLocked could have generated obsolete tables, schedule a
+	// Publish the ingest's seqnums along with the readState that contains its
+	// tables, so that a read without a snapshot sees either both or neither
+	// (see loadReadStateAndSeqNum). Otherwise a read in between would see an
+	// excise without the tables that replace the excised keys. When the commit
+	// pipeline publishes the seqnums after the apply returns, visibleSeqNum is
+	// already past them.
+	publishSeqNum := allocatedSeqNum + base.SeqNum(allocatedCount)
+	if invariants.Enabled {
+		// commitPipeline.AllocateSeqNum waited for every earlier seqnum to be
+		// published, and no later one can be published before this ingest's.
+		if visible := d.mu.versions.visibleSeqNum.Load(); visible != allocatedSeqNum {
+			panic(errors.AssertionFailedf(
+				"pebble: ingest of seqnums [%s, %s) applied with visibleSeqNum %s",
+				allocatedSeqNum, publishSeqNum, visible))
+		}
+	}
+	d.updateReadStateAndPublishLocked(d.opts.DebugCheck, publishSeqNum)
+	// The readState update could have generated obsolete tables, schedule a
 	// cleanup job if necessary.
 	d.deleteObsoleteFiles(jobID)
 	d.updateTableStatsLocked(ve.NewTables)
