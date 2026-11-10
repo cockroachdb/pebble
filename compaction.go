@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -381,6 +382,17 @@ func (c *tableCompaction) AddInProgressLocked(d *DB) {
 		for f := range cl.files.All() {
 			if f.IsCompacting() {
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.TableNum)
+			}
+			// A compaction may drop keys shadowed by its inputs' keys, so a snapshot
+			// opened at visibleSeqNum must see every input key. Every table is
+			// published before others can observe it in the version (see
+			// versionSet.UpdateVersionLocked).
+			if invariants.Enabled {
+				if visible := d.mu.versions.visibleSeqNum.Load(); f.SeqNums.High >= visible {
+					panic(errors.AssertionFailedf(
+						"pebble: compaction input %s has seqnums %s, not below visibleSeqNum %d",
+						f.TableNum, f.SeqNums, errors.Safe(visible)))
+				}
 			}
 			f.SetCompactionState(manifest.CompactionStateCompacting)
 			if c.startLevel != nil && c.outputLevel != nil && c.startLevel.level == 0 {
