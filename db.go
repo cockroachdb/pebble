@@ -262,6 +262,15 @@ type DB struct {
 	// recycled.
 	memTableRecycle atomic.Pointer[memTable]
 
+	// flushWaitSeqNum is nonzero when the flush scheduler found an immutable
+	// flushable that is not ready to be flushed only because its sequence
+	// numbers have not all been published (see DB.readyFlushablesLocked). It
+	// holds the visibleSeqNum the flushable is waiting for. It is set under
+	// DB.mu (see DB.armFlushWait). Once visibleSeqNum reaches it, the publisher
+	// that observes this clears it, by compare-and-swap and without DB.mu, and
+	// reschedules the flush (see DB.maybeScheduleFlushAfterPublish).
+	flushWaitSeqNum base.AtomicSeqNum
+
 	// The logical size of the current WAL.
 	logSize atomic.Uint64
 	// The number of input bytes to the log. This is the raw size of the
@@ -1087,31 +1096,28 @@ func (d *DB) newIter(
 		// Determine the seqnum to read at after grabbing the read state (current
 		// and memtables) above. This order ensures that no key visible at the
 		// seqnum was dropped from the pinned version in favor of one that is not.
-		// Compactions, including delete-only ones, read only sstables whose
-		// seqnums were published when they were picked (but see the TODO below),
-		// so they drop a key only in favor of a newer key or range deletion that
-		// was below visibleSeqNum when they were picked. Since visibleSeqNum only
-		// grows, a seqnum loaded after pinning the version sees whatever replaced
-		// each dropped key. A seqnum loaded before could miss it if the
-		// compaction finishes in between, and the read would see neither the
-		// dropped key nor its replacement.
+		// A flush starts only once every seqnum it flushes is published (see
+		// flushable.seqNumUpperBound), and compactions, including delete-only
+		// ones, read only sstables whose seqnums were published when they
+		// started (but see the TODO below), so they drop a key only in favor of
+		// a newer key or range deletion that was below visibleSeqNum when they
+		// started. Since visibleSeqNum only grows, a seqnum loaded after pinning
+		// the version sees whatever replaced each dropped key. A seqnum loaded
+		// before could miss it if the flush or compaction finishes in between,
+		// and the read would see neither the dropped key nor its replacement.
 		//
 		// The read is still not an exact view of the LSM at the seqnum: it misses
 		// keys below the seqnum that were added outside the pinned read state
 		// after it was pinned (e.g. an ingested table), while it sees later keys
 		// written to a pinned memtable. Snapshot reads have neither problem: every
 		// key below the snapshot's seqnum was in the LSM before the read state
-		// was pinned, and compactions preserve the keys visible to registered
-		// snapshots.
+		// was pinned, and flushes and compactions preserve the keys visible to
+		// registered snapshots.
 		//
-		// TODO(radu): flushes and ingests break the guarantee above, for snapshot
-		// reads too. A flush can drop a key in favor of a newer key in the same
-		// memtable that is applied but not yet published. A read of the version
-		// the flush installs, at a seqnum taken before that publish, does not see
-		// the newer key, so it sees neither, and can instead see an older value
-		// that both of them hide. Likewise, an ingest adds its sstables to the
-		// version before it publishes their seqnums, and a compaction that reads
-		// them in between can drop keys in favor of the unpublished ones.
+		// TODO(radu): ingests break the guarantee above, for snapshot reads too.
+		// An ingest adds its sstables to the version before it publishes their
+		// seqnums, and a compaction that reads them in between can drop keys in
+		// favor of the unpublished ones.
 		if seqNum == 0 {
 			seqNum = d.mu.versions.visibleSeqNum.Load()
 		}
