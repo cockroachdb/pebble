@@ -41,6 +41,7 @@ func (e *testCommitEnv) env() commitEnv {
 		visibleSeqNum: &e.visibleSeqNum,
 		apply:         e.apply,
 		write:         e.write,
+		afterPublish:  func() {},
 	}
 }
 
@@ -250,6 +251,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 			_, err := wal.SyncRecord(b.data, syncWG, syncErr)
 			return nil, err
 		},
+		afterPublish: func() {},
 	}
 	p := newCommitPipeline(testEnv)
 	wal = record.NewLogWriter(sf, 0 /* logNum */, record.LogWriterConfig{
@@ -333,6 +335,7 @@ func TestCommitPipelineLogDataSeqNum(t *testing.T) {
 			}
 			return nil, nil
 		},
+		afterPublish: func() {},
 	}
 	testEnv.logSeqNum.Store(base.SeqNumStart)
 	testEnv.visibleSeqNum.Store(base.SeqNumStart)
@@ -390,6 +393,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 							_, err := wal.SyncRecord(b.data, syncWG, syncErr)
 							return mem, err
 						},
+						afterPublish: func() {},
 					}
 					p := newCommitPipeline(nullCommitEnv)
 					wal = record.NewLogWriter(io.Discard, 0, /* logNum */
