@@ -1236,6 +1236,12 @@ type Options struct {
 		// start of a read and the point where it pins the LSM.
 		testingBeforeIterLoadReadStateFunc func()
 
+		// testingAfterLoadReadStateAndSeqNumFunc when non-nil, is called by
+		// DB.loadReadStateAndSeqNum after it loads the read state and seqnum,
+		// before it returns them. Used by tests to change the LSM between the
+		// point where a read pins the LSM and its use of the pinned state.
+		testingAfterLoadReadStateAndSeqNumFunc func()
+
 		// fsCloser holds a closer that should be invoked after a DB using these
 		// Options is closed. This is used to automatically stop the
 		// long-running goroutine associated with the disk-health-checking FS.

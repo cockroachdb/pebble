@@ -159,25 +159,23 @@ func (d *DB) newInternalIter(
 	// compaction. The readState is unref'd by Iterator.Close().
 	var readState *readState
 	var vers *manifest.Version
+	seqNum := sOpts.seqNum
 	if sOpts.vers == nil {
 		if sOpts.readState != nil {
 			readState = sOpts.readState
 			readState.ref()
-			vers = readState.current
+		} else if seqNum == 0 {
+			readState, seqNum = d.loadReadStateAndSeqNum()
 		} else {
 			readState = d.loadReadState()
-			vers = readState.current
 		}
+		vers = readState.current
 	} else {
 		vers = sOpts.vers
 		sOpts.vers.Ref()
 	}
-
-	// Determine the seqnum to read at after grabbing the read state (current and
-	// memtables) above.
-	seqNum := sOpts.seqNum
-	if seqNum == 0 {
-		seqNum = d.mu.versions.visibleSeqNum.Load()
+	if invariants.Enabled && seqNum == 0 {
+		panic(errors.AssertionFailedf("pebble: internal iterator without a seqnum"))
 	}
 
 	// Bundle various structures under a single umbrella in order to allocate
