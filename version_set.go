@@ -492,6 +492,16 @@ type versionUpdate struct {
 //
 // If updateFn returns an error, no update is applied and that same error is returned.
 // If versionUpdate.VE is nil, the no update is applied (and no error is returned).
+//
+// The sequence numbers of every new table must be published (below
+// visibleSeqNum) before DB.mu is released with the table in the current
+// version. Compactions may pick any table in the current version (see
+// tableCompaction.AddInProgressLocked); one that read a table with unpublished
+// sequence numbers could drop keys it shadows that a snapshot opened before
+// the publish still needs. Flushes and compactions only ever write published
+// sequence numbers (see flushable.seqNumUpperBound). An ingest publishes its
+// sequence numbers in DB.ingestApply, in the readState update that follows
+// UpdateVersionLocked.
 func (vs *versionSet) UpdateVersionLocked(
 	updateFn func() (versionUpdate, error),
 ) (time.Duration, error) {
