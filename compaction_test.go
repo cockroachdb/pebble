@@ -2938,6 +2938,65 @@ func TestCompaction_UpdateVersionFails(t *testing.T) {
 	}
 }
 
+// TestCompactionValueBlockReadError tests that a failed read of a value from a
+// value block fails the compaction that needs it. The compaction's iterator
+// saves the value of the current key before looking past it in the snapshot
+// stripe, so the read happens while the key is still current; if that key is
+// the last in the compaction's input, the iterator is exhausted straight
+// afterwards.
+func TestCompactionValueBlockReadError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Fail the read of the value block that holds the key's value, and only while
+	// the second compaction below runs. The value block reader reads its index
+	// block first, and `OnIndex(1)` matches the second matching read, so the index
+	// read itself is left alone.
+	counter := &errorfs.Counter{Injector: errorfs.ErrInjected.If(errorfs.And(
+		errorfs.OpKindIn("OpFileReadAt", errorfs.MakeOpKinds(errorfs.OpFileReadAt)),
+		errorfs.CallStackIncludes("sstable/valblk"),
+		errorfs.OnIndex(1),
+	))}
+	toggle := &errorfs.Toggle{Injector: counter}
+	d, err := Open("", &Options{
+		FS:                          errorfs.Wrap(vfs.NewMem(), toggle),
+		FormatMajorVersion:          internalFormatNewest,
+		DisableAutomaticCompactions: true,
+		Logger:                      testutils.Logger{T: t},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Put a version of "a" in L6, so that the compaction below merges levels
+	// rather than moving the flushed table.
+	require.NoError(t, d.Set([]byte("a"), []byte("base"), Sync))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("b"), false))
+
+	// The snapshot keeps this version of "a" alive, so the sstable writer stores
+	// it in a value block, where a read has to fetch it.
+	oldValue := strings.Repeat("o", 100)
+	require.NoError(t, d.Set([]byte("a"), []byte(oldValue), Sync))
+	snap := d.NewSnapshot()
+	defer func() { require.NoError(t, snap.Close()) }()
+	require.NoError(t, d.Set([]byte("a"), []byte("new"), Sync))
+	require.NoError(t, d.Flush())
+
+	l6Tables := d.Metrics().Levels[6].Tables.Count
+	toggle.On()
+	err = d.Compact(context.Background(), []byte("a"), []byte("b"), false)
+	toggle.Off()
+	require.Equal(t, uint64(1), counter.Load())
+	require.ErrorIs(t, err, counter.LastError())
+
+	// The compaction failed, so it kept its input tables, and the value the read
+	// failed on is still readable through the snapshot.
+	require.Equal(t, l6Tables, d.Metrics().Levels[6].Tables.Count)
+	v, closer, err := snap.Get([]byte("a"))
+	require.NoError(t, err)
+	defer closer.Close()
+	require.Equal(t, oldValue, string(v))
+}
+
 // TestSharedObjectDeletePacing tests that we don't throttle shared object
 // deletes (see the DeletePacer.BaselineRate option).
 func TestSharedObjectDeletePacing(t *testing.T) {
