@@ -744,7 +744,11 @@ func (i *Iter) iterNext() bool {
 		i.nextMeta = base.KVMeta{}
 	}
 	if i.iterKV == nil {
-		i.err = i.iter.Error()
+		// Preserve a value-fetch error when the input is exhausted without an
+		// error.
+		if err := i.iter.Error(); err != nil {
+			i.err = err
+		}
 	}
 	return i.iterKV != nil
 }
