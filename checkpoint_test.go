@@ -426,6 +426,46 @@ func TestCheckpointFlushWAL(t *testing.T) {
 	}
 }
 
+// TestCheckpointNoVersionEdit tests a checkpoint taken after an Open that
+// replays no WAL and before any version edit.
+func TestCheckpointNoVersionEdit(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	const checkpointPath = "checkpoint"
+	fs := vfs.NewMem()
+	opts := &Options{FS: fs, Logger: testutils.Logger{T: t}}
+
+	d, err := Open("db", opts)
+	require.NoError(t, err)
+	require.NoError(t, d.Set([]byte("key"), []byte("value"), Sync))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Close())
+
+	// Remove the WAL, as a crash that lost the creation of an empty WAL would.
+	// The reopen then replays nothing: replaying a WAL is what flushes and makes
+	// the first version edit after Open.
+	files, err := fs.List("db")
+	require.NoError(t, err)
+	for _, name := range files {
+		if strings.HasSuffix(name, ".log") {
+			require.NoError(t, fs.Remove(fs.PathJoin("db", name)))
+		}
+	}
+	d, err = Open("db", opts)
+	require.NoError(t, err)
+	require.Nil(t, d.mu.versions.manifest, "expected no version edit since open")
+
+	require.NoError(t, d.Checkpoint(checkpointPath))
+	require.NoError(t, d.Close())
+
+	d, err = Open(checkpointPath, opts)
+	require.NoError(t, err)
+	v, closer, err := d.Get([]byte("key"))
+	require.NoError(t, err)
+	require.Equal(t, "value", string(v))
+	require.NoError(t, closer.Close())
+	require.NoError(t, d.Close())
+}
+
 func TestCheckpointManyFiles(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	if testing.Short() {
