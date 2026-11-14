@@ -319,6 +319,24 @@ func (vs *versionSet) logUnlockAndInvalidatePickedCompactionCache() {
 	vs.logUnlock()
 }
 
+// checkpointManifestSize returns the number of bytes of the manifest that
+// describe the current version, which is what a checkpoint must copy.
+//
+// DB.mu and the manifest lock must be held. The manifest writer is nil until
+// the first version edit after Open, which writes a new manifest (see
+// UpdateVersionLocked); until then the manifest read by Open is complete, and
+// its length is the length of the file on disk.
+func (vs *versionSet) checkpointManifestSize() (int64, error) {
+	if vs.manifest != nil {
+		return vs.manifest.Size(), nil
+	}
+	info, err := vs.fs.Stat(base.MakeFilepath(vs.fs, vs.dirname, base.FileTypeManifest, vs.manifestFileNum))
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
+
 // versionUpdate is returned by the function passed to UpdateVersionLocked.
 //
 // If VE is nil, there is no update to apply (but it is not an error).
