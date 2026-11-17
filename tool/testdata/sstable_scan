@@ -479,3 +479,32 @@ sstable scan
 000008.sst
 eee\x00#14,SET [706967656f6e]
 fff\x00#15,SET [636869636b656e]
+
+# Regression test for #718: an sstable whose table number is absent from every
+# manifest in --load-blobs-from (here an empty store) must warn and print blob
+# handles rather than panic on a nil blob reference.
+create orphaned-load-dir
+----
+
+sstable scan
+./testdata/find-val-sep-db/000005.sst
+--load-blobs-from=orphaned-load-dir
+----
+000005.sst
+warning: no blob references found for table 000005; printing blob handles instead of values
+aaa\x00#10,SET [(f0,blk0,id0,len5)]
+bbb\x00#11,SET [(f0,blk0,id1,len3)]
+ccc\x00#12,SET [(f0,blk0,id2,len10)]
+ddd\x00#13,SET [36]
+
+# Regression test for #718: scanning the backing file of virtual tables, whose
+# physical file number appears in the manifest only via add-backing, resolves
+# the separated values that the virtual tables reference.
+sstable scan
+./testdata/scan-virtual-backing-db/000005.sst
+--load-blobs-from=./testdata/scan-virtual-backing-db
+----
+000005.sst
+key0\x00#10,SET [76616c756530]
+key1\x00#11,SET [76616c756531]
+key2\x00#12,SET [76616c756532]
