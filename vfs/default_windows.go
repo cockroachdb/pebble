@@ -9,6 +9,7 @@ package vfs
 import (
 	"io/fs"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"github.com/cockroachdb/errors"
@@ -68,8 +69,45 @@ func (d *windowsDir) Sync() error {
 	if err := windows.CloseHandle(handle); err != nil {
 		return errors.WithStack(err)
 	}
-	return nil
+	// Volume-root flush: on NTFS the directory flush above issues the disk
+	// flush IRP but writes no metadata - the file's MFT record and the
+	// directory index stay in memory - while FlushFileBuffers on the volume
+	// root issues the same IRP and persists that metadata (measured with
+	// block-command tracing and ETW; E17/E21, archived in takomitkm/leveldb
+	// docs/powercut/).  The root flush is therefore what actually makes the
+	// namespace change durable.  Skipped for paths without a drive-letter
+	// prefix (UNC shares, relative names) and when the flushed directory IS
+	// the volume root.  Same error policy as the directory flush above.
+	return fsyncVolumeRoot(d.Name())
 }
+// fsyncVolumeRoot flushes the volume root ("X:\") of dir.  It is a no-op for
+// paths without a drive-letter prefix and when dir is the root already (the
+// caller just flushed it, so a second flush would only repeat work).
+func fsyncVolumeRoot(dir string) error {
+	vol := filepath.VolumeName(dir)
+	if len(vol) != 2 || vol[1] != ':' {
+		return nil
+	}
+	if len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/') {
+		return nil
+	}
+	root, err := syscall.UTF16PtrFromString(vol + `\`)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	handle, err := windows.CreateFile(root, windows.GENERIC_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	if err := windows.FlushFileBuffers(handle); err != nil {
+		_ = windows.CloseHandle(handle)
+		return errors.WithStack(err)
+	}
+	return windows.CloseHandle(handle)
+}
+
 func (*windowsDir) SyncData() error                                { return nil }
 func (*windowsDir) SyncTo(length int64) (fullSync bool, err error) { return false, nil }
 
