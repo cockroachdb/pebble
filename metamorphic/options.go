@@ -727,8 +727,9 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		unhealthyThreshold := expRandDuration(rng, 3*referenceDur, time.Second)
 		healthyThreshold := expRandDuration(rng, 3*referenceDur, time.Second)
 		// Use a healthy interval between 1-119x the probe interval. The probe
-		// maintains a maximum history 120 entries, so the healthy interval
-		// must not exceed 119x the probe interval.
+		// maintains a maximum history of probeHistoryLength (128) entries, so the
+		// healthy interval must not exceed 128x the probe interval;
+		// FailoverOptions.Validate rejects anything larger.
 		healthyInterval := scaleDuration(probeInterval, 1.0, 119.0)
 		opts.WALFailover = &pebble.WALFailoverOptions{
 			Secondary: wal.Dir{FS: vfs.Default, Dirname: pebble.MakeStoreRelativePath(vfs.Default, "wal_secondary")},

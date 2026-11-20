@@ -1468,7 +1468,7 @@ func (o *WALFailoverOptions) Validate() error {
 	if o.Secondary.FS == nil {
 		return errors.New("Secondary.FS is required")
 	}
-	return nil
+	return o.FailoverOptions.Validate()
 }
 
 // ReadaheadConfig controls the use of read-ahead.

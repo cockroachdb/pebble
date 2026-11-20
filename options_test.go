@@ -849,3 +849,30 @@ func TestStaticSpanPolicyFunc(t *testing.T) {
 		return buf.String()
 	})
 }
+
+// TestOptionsValidateWALFailoverIntervals asserts that the wiring in
+// WALFailoverOptions.Validate -- the one line that delegates to
+// wal.FailoverOptions.Validate -- is reachable from Options.Validate. Without
+// this, deleting that delegation would silently reintroduce the getMeanMax
+// panic while every wal-package test still passed, because those call
+// wal.FailoverOptions.Validate directly and never go through the wiring.
+func TestOptionsValidateWALFailoverIntervals(t *testing.T) {
+	// ratio 180 (3m over 1s) exceeds the 128-sample limit.
+	bad := &Options{
+		WALFailover: &WALFailoverOptions{
+			Secondary: wal.Dir{FS: vfs.NewMem(), Dirname: "secondary"},
+			FailoverOptions: wal.FailoverOptions{
+				PrimaryDirProbeInterval: time.Second,
+				HealthyInterval:         3 * time.Minute,
+			},
+		},
+	}
+	bad.EnsureDefaults()
+	err := bad.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HealthyInterval")
+
+	// The delegation must still accept a valid config (all defaults).
+	good := WALFailoverOptions{Secondary: wal.Dir{FS: vfs.NewMem(), Dirname: "secondary"}}
+	require.NoError(t, good.Validate())
+}
