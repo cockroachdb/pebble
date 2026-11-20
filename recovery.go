@@ -293,6 +293,7 @@ func (rs *recoveredState) Close() error {
 // replaying a manifest file.
 type recoveredVersion struct {
 	manifestFileNum    base.DiskFileNum
+	manifestSize       int64
 	minUnflushedLogNum base.DiskFileNum
 	nextFileNum        base.DiskFileNum
 	logSeqNum          base.SeqNum
@@ -377,6 +378,7 @@ func recoverVersion(
 			// SeqNumStart to leave ample room for reserved sequence numbers.
 			rv.logSeqNum = max(ve.LastSeqNum+1, base.SeqNumStart)
 		}
+		rv.manifestSize = rr.Offset()
 	}
 
 	// We have already set vs.nextFileNum=1 at the beginning of the function and

@@ -112,8 +112,12 @@ type versionSet struct {
 	manifestFileNum base.DiskFileNum
 	manifestMarker  *atomicfs.Marker
 
-	manifestFile          vfs.File
-	manifest              *record.Writer
+	manifestFile vfs.File
+	manifest     *record.Writer
+	// loadedManifestSize is the byte offset of the end of the last valid record
+	// in the manifest read by Open, excluding any torn trailing record. Used by
+	// currentManifestSize while manifest is nil.
+	loadedManifestSize    int64
 	getFormatMajorVersion func() FormatMajorVersion
 
 	writing    bool
@@ -263,6 +267,7 @@ func (vs *versionSet) initRecoveredDB(
 ) error {
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
 	vs.manifestFileNum = rv.manifestFileNum
+	vs.loadedManifestSize = rv.manifestSize
 	vs.minUnflushedLogNum = rv.minUnflushedLogNum
 	vs.nextFileNum.Store(uint64(rv.nextFileNum))
 	vs.logSeqNum.Store(rv.logSeqNum)
@@ -317,6 +322,20 @@ func (vs *versionSet) logUnlock() {
 func (vs *versionSet) logUnlockAndInvalidatePickedCompactionCache() {
 	vs.pickedCompactionCache.invalidate()
 	vs.logUnlock()
+}
+
+// currentManifestSize returns the number of valid bytes in the current manifest
+// file.
+//
+// DB.mu and the manifest lock must be held. The manifest writer is nil until
+// the first version edit after Open, which writes a new manifest (see
+// UpdateVersionLocked); until then the manifest read by Open is complete up to
+// loadedManifestSize (excluding any torn trailing record that Open ignored).
+func (vs *versionSet) currentManifestSize() int64 {
+	if vs.manifest != nil {
+		return vs.manifest.Size()
+	}
+	return vs.loadedManifestSize
 }
 
 // versionUpdate is returned by the function passed to UpdateVersionLocked.

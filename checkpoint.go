@@ -195,7 +195,7 @@ func (d *DB) Checkpoint(
 	current := d.mu.versions.currentVersion()
 	formatVers := d.FormatMajorVersion()
 	manifestFileNum := d.mu.versions.manifestFileNum
-	manifestSize := d.mu.versions.manifest.Size()
+	manifestSize := d.mu.versions.currentManifestSize()
 	optionsFileNum := d.optionsFileNum
 
 	virtualBackingFiles := make(map[base.DiskFileNum]struct{})
