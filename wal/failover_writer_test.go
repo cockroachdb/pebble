@@ -787,4 +787,25 @@ func TestFailoverWriterManyRecords(t *testing.T) {
 	stopper.stop()
 }
 
+func TestRecordQueuePushClobbersOwnEntry(t *testing.T) {
+	var q recordQueue
+	q.init(prometheus.NewHistogram(prometheus.HistogramOpts{}))
+	m := len(q.buffer)
+	// Fill the queue to exactly m entries without triggering growth.
+	for i := 0; i < m; i++ {
+		q.push([]byte("x"), SyncOptions{}, nil, 0, 0, nil)
+	}
+	// A sync completes and pops the oldest entry.
+	q.pop(0, nil)
+	// The next push lands in slot h%m == lastTailObservedByProducer%m.
+	var wg sync.WaitGroup
+	var err error
+	wg.Add(1)
+	idx, _, _ := q.push([]byte("y"), SyncOptions{Done: &wg, Err: &err}, nil, 0, 0, nil)
+	if n := q.pop(idx, nil); n != 1 {
+		t.Fatalf("sync notification lost: popped %d syncs", n)
+	}
+	wg.Wait()
+}
+
 // TODO(sumeer): randomized error injection and delay injection test.

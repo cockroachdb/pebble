@@ -173,12 +173,6 @@ func (q *recordQueue) push(
 		q.mu.Unlock()
 	}
 	q.mu.RLock()
-	q.buffer[int(h)%m] = recordQueueEntry{
-		p:          p,
-		opts:       opts,
-		refCount:   refCount,
-		writeStart: writeStart,
-	}
 	// Reclaim memory for consumed entries. We couldn't do that in pop since
 	// multiple consumers are popping using CAS and that immediately transfers
 	// ownership to the producer.
@@ -186,6 +180,12 @@ func (q *recordQueue) push(
 		q.buffer[int(i)%m] = recordQueueEntry{}
 	}
 	q.lastTailObservedByProducer = t
+	q.buffer[int(h)%m] = recordQueueEntry{
+		p:          p,
+		opts:       opts,
+		refCount:   refCount,
+		writeStart: writeStart,
+	}
 	q.headTail.Add(1 << headTailBits)
 	writer = q.writer
 	if writer == latestWriterInWriteRecord {
