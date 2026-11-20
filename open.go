@@ -447,7 +447,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	compactionSchedulerRegistered = true
 	if !d.opts.ReadOnly {
 		d.maybeScheduleFlush()
-		for d.mu.compact.flushing {
+		for d.mu.compact.flushing || d.mu.compact.flushRetrying {
 			d.mu.compact.cond.Wait()
 		}
 
