@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/cockroachdb/errors"
+	"golang.org/x/sys/windows"
 )
 
 func wrapOSFileImpl(f *os.File) File {
@@ -40,9 +41,35 @@ func (d *windowsDir) Stat() (FileInfo, error)                 { return maybeWrap
 func (*windowsDir) Prefetch(offset int64, length int64) error { return nil }
 func (*windowsDir) Preallocate(off, length int64) error       { return nil }
 
-// Silently ignore Sync() on Windows. This is the same behavior as
-// RocksDB. See port/win/io_win.cc:WinDirectory::Fsync().
-func (*windowsDir) Sync() error                                    { return nil }
+// Sync flushes the directory. On POSIX, OpenDir returns a file descriptor
+// that callers fsync directly; on Windows the handle OpenDir holds is
+// read-only, and FlushFileBuffers requires the handle to carry GENERIC_WRITE
+// (a read-only handle fails with ERROR_ACCESS_DENIED), so a dedicated handle
+// is opened for the duration of the call. The directory entry of a newly
+// created file only becomes durable when the parent directory handle is
+// flushed; without this, the Windows side silently reported success for the
+// same contract the POSIX side honors. RocksDB's WinDirectory::Fsync
+// (port/win/io_win.cc) stopped being a no-op in the same way.
+func (d *windowsDir) Sync() error {
+	path, err := syscall.UTF16PtrFromString(d.Name())
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	handle, err := windows.CreateFile(path, windows.GENERIC_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	if err := windows.FlushFileBuffers(handle); err != nil {
+		_ = windows.CloseHandle(handle)
+		return errors.WithStack(err)
+	}
+	if err := windows.CloseHandle(handle); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
 func (*windowsDir) SyncData() error                                { return nil }
 func (*windowsDir) SyncTo(length int64) (fullSync bool, err error) { return false, nil }
 
