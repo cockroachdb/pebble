@@ -40,6 +40,12 @@ type versionSet struct {
 	// suffix of these sequence numbers may not have been written to a WAL. Both
 	// logSeqNum and visibleSeqNum are atomically updated by the commitPipeline.
 	// visibleSeqNum is <= logSeqNum.
+	//
+	// The commitPipeline allocates a dense range of sequence numbers per
+	// operation and publishes those ranges in allocation order. An ingest that
+	// adds its tables to the version publishes its own range a little earlier,
+	// in the readState update that installs the tables (see DB.ingestApply); the
+	// commitPipeline's publish of the range is then a no-op.
 	visibleSeqNum base.AtomicSeqNum
 
 	// Number of bytes present in sstables being written by in-progress
@@ -486,6 +492,16 @@ type versionUpdate struct {
 //
 // If updateFn returns an error, no update is applied and that same error is returned.
 // If versionUpdate.VE is nil, the no update is applied (and no error is returned).
+//
+// The sequence numbers of every new table must be published (below
+// visibleSeqNum) before DB.mu is released with the table in the current
+// version. Compactions may pick any table in the current version (see
+// tableCompaction.AddInProgressLocked); one that read a table with unpublished
+// sequence numbers could drop keys it shadows that a snapshot opened before
+// the publish still needs. Flushes and compactions only ever write published
+// sequence numbers (see flushable.seqNumUpperBound). An ingest publishes its
+// sequence numbers in DB.ingestApply, in the readState update that follows
+// UpdateVersionLocked.
 func (vs *versionSet) UpdateVersionLocked(
 	updateFn func() (versionUpdate, error),
 ) (time.Duration, error) {

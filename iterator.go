@@ -264,7 +264,15 @@ type iterClearedState struct {
 	newIters         tableNewIters
 	newIterRangeKey  keyspanimpl.TableNewSpanIter
 	lazyCombinedIter lazyCombinedIter
-	seqNum           base.SeqNum
+	// seqNum determines which keys are visible to the iterator: only keys
+	// with sequence numbers below seqNum are visible. Snapshots and EFOS
+	// provide an explicit value; for regular iterators it is loaded from
+	// visibleSeqNum during construction, together with the readState, which
+	// makes the iterator an exact view of the LSM at seqNum (see
+	// DB.loadReadStateAndSeqNum). A regular iterator is not registered in
+	// d.mu.snapshots, so the readState's refs are the only thing preserving
+	// the history it reads.
+	seqNum base.SeqNum
 	// batch is non-nil if this Iterator includes an indexed batch. Batch
 	// contains all the state pertaining to iterating over the indexed batch.
 	// The iteratorBatchState struct is bundled within the iterAlloc struct to
