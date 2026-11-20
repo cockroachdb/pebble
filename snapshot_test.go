@@ -24,6 +24,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -567,6 +569,48 @@ func TestEFOSReadDuringTransition(t *testing.T) {
 	}
 }
 
+// TestNewSnapshotIngestRace, TestEFOSIngestRace, and TestNewSnapshotCommitFlushRace
+// exercise the window between the apply step that installs a change's data
+// into the LSM (commitApply for regular commits, ingestApply for ingests) and
+// commitPipeline.publish, which bumps visibleSeqNum past it.
+//
+// For commits, the batch's entries are already in the memtable in that window,
+// and the batch's writer ref on the memtable has been dropped (writerUnref runs
+// inside commitApply), while visibleSeqNum is still N. A concurrent compaction
+// running while visibleSeqNum is still N captures a snapshot list that lacks
+// any snapshot registered at S=N (because no snapshot has been registered yet
+// at that moment), so a later-created snapshot at S=N is invisible to the
+// compaction. If the compaction merges away an older entry e@old (because the
+// stripe (old, N] looks unprotected), a subsequent read from the snapshot sees
+// the post-edit version with the older entry gone — and the surviving entry
+// at seqnum N is filtered out (N < N is false). Result: ErrNotFound, which is
+// the data-loss bug. A flush therefore does not start until its seqnums are
+// published (see flushable.seqNumUpperBound); see TestNewSnapshotCommitFlushRace.
+//
+// Ingests have no such window: ingestApply publishes the ingest's seqnums
+// while installing its sstables, without releasing DB.mu in between, so no
+// compaction or snapshot creation can observe the sstables unpublished, and a
+// flushable ingest is flushed only once its seqnums are published. The ingest
+// tests block the ingesting goroutine in publish (testingBeforePublishFunc)
+// and, while it is held:
+//  1. Run a manual compaction, which merges the ingested e@N with e@old,
+//     dropping e@old.
+//  2. Create the snapshot, at S>N.
+//  3. Release the publish hook.
+//
+// The snapshot must observe e@N. Had the compaction run, or the snapshot been
+// created, while the ingest was unpublished, the snapshot would be at S=N and
+// see neither value.
+func TestNewSnapshotIngestRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	runIngestSnapshotRace(t, false /* useEFOS */)
+}
+
+func TestEFOSIngestRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	runIngestSnapshotRace(t, true /* useEFOS */)
+}
+
 // snapshotReader is the common subset of *Snapshot and *EventuallyFileOnlySnapshot.
 type snapshotReader interface {
 	Get(key []byte) ([]byte, io.Closer, error)
@@ -604,3 +648,187 @@ func (b *publishBlocker) hook() func() {
 
 func (b *publishBlocker) enable()  { b.enabled.Store(true) }
 func (b *publishBlocker) unblock() { close(b.release) }
+
+func runIngestSnapshotRace(t *testing.T, useEFOS bool) {
+	blocker := newPublishBlocker()
+	o := &Options{
+		FS:                          vfs.NewMem(),
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+	}
+	o.private.testingBeforePublishFunc = blocker.hook()
+
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Hold a long-lived "barrier" snapshot taken before any writes. This
+	// disables the last-stripe SeqNumZero rewrite in the compaction iterator
+	// so the surviving "k"@new keeps its original seqnum N. Without this,
+	// the racing snapshot at S=N would still see "k"@new (because its
+	// seqnum was rewritten to 0), masking the bug as a benign "saw the
+	// newer write" outcome instead of the actual data loss (NotFound).
+	barrier := d.NewSnapshot()
+	defer func() { require.NoError(t, barrier.Close()) }()
+
+	// Set "k"="old" and push it down to L6 via a manual compaction so that
+	// the value lives in a stable sstable below where the ingest will land.
+	require.NoError(t, d.Set([]byte("k"), []byte("old"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false))
+
+	// Arm the publish hook now that setup is done.
+	blocker.enable()
+
+	// Build an sstable containing "k"="new" for ingestion. Because "k"
+	// overlaps the L6 sstable, the ingest will land at L5.
+	f, err := o.FS.Create("ext", vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f),
+		d.opts.MakeWriterOptions(0, d.TableFormat()))
+	require.NoError(t, w.Set([]byte("k"), []byte("new")))
+	require.NoError(t, w.Close())
+
+	// Start the ingest. It blocks in commitPipeline.publish, after
+	// ingestApply has installed the new sstable into the current version and
+	// bumped visibleSeqNum past its seqnum N.
+	ingestDone := make(chan struct{})
+	go func() {
+		defer close(ingestDone)
+		require.NoError(t, d.Ingest(context.Background(), []string{"ext"}))
+	}()
+	<-blocker.entered
+
+	// The current version contains the freshly-ingested L5 sstable at seqnum
+	// N, along with the original L6 sstable at some seqnum < N. Both are
+	// published, so the L5 -> L6 compaction runs now and drops "k"@old.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, d.Compact(ctx, []byte("a"), []byte("z"), false))
+
+	// Create the snapshot/EFOS after the compaction. Its seqnum is above N,
+	// so it sees "k"@new, the only value left.
+	var snap snapshotReader
+	var closeSnap func() error
+	if useEFOS {
+		efos := d.NewEventuallyFileOnlySnapshot([]KeyRange{
+			{Start: []byte("a"), End: []byte("z")},
+		})
+		snap = efos
+		closeSnap = efos.Close
+	} else {
+		s := d.NewSnapshot()
+		snap = s
+		closeSnap = s.Close
+	}
+
+	// Release the ingest so publish runs and visibleSeqNum is bumped.
+	blocker.unblock()
+	<-ingestDone
+
+	v, closer, getErr := snap.Get([]byte("k"))
+	var observed string
+	if getErr == nil {
+		observed = string(v)
+		_ = closer.Close()
+	}
+	require.NoError(t, closeSnap())
+
+	require.NoError(t, getErr, "snapshot should still see the key (saw NotFound — data loss)")
+	require.Equal(t, "new", observed, "snapshot should observe the ingested value")
+}
+
+// TestNewSnapshotCommitFlushRace exploits the publish-side window for a
+// regular commit, which, unlike an ingest, has one. While the committing
+// goroutine is held in publish, with a@N applied to the memtable but
+// visibleSeqNum still N:
+//
+//  1. d.AsyncFlush() rotates the active memtable. The committing batch's
+//     writer ref was dropped inside commitApply, but the flush waits for a@N
+//     to be published (see flushable.seqNumUpperBound).
+//  2. A manual L0->L6 compaction waits for the memtable to flush, and its
+//     context times out. If the flush ran before the publish, the compaction
+//     would pick its L0 sstable with a snapshot list lacking S=N and drop
+//     a@old.
+//  3. The snapshot is created at S=N.
+//  4. Releasing the publish hook lets the flush run. The snapshot must still
+//     see a@old.
+func TestNewSnapshotCommitFlushRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	blocker := newPublishBlocker()
+	o := &Options{
+		FS:                          vfs.NewMem(),
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+	}
+	o.private.testingBeforePublishFunc = blocker.hook()
+
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Barrier snapshot (see runIngestSnapshotRace).
+	barrier := d.NewSnapshot()
+	defer func() { require.NoError(t, barrier.Close()) }()
+
+	require.NoError(t, d.Set([]byte("a"), []byte("old"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false))
+
+	blocker.enable()
+
+	// Commit B writing a="new". Blocks in publish: env.apply has installed
+	// a@N into the memtable and dropped B's writer ref, but visibleSeqNum
+	// is still N.
+	commitDone := make(chan struct{})
+	go func() {
+		defer close(commitDone)
+		require.NoError(t, d.Set([]byte("a"), []byte("new"), nil))
+	}()
+	<-blocker.entered
+
+	// Request a flush of the memtable. The rotated memtable's writerRefs reach
+	// zero once the queue's ref is dropped (B's writer ref was already dropped
+	// inside commitApply), but the flush waits for a@N to be published (see
+	// flushable.seqNumUpperBound). A flush that did not wait would produce an
+	// L0 sstable containing a@N.
+	flushed, err := d.AsyncFlush()
+	require.NoError(t, err)
+
+	// Drive the L0 -> L6 compaction. If the flush had run, its L0 file would be
+	// picked immediately: the compaction would capture a snapshot list lacking
+	// S=N (we have not created that snapshot yet), drop a@old, and return nil.
+	// As it is, the manual compaction waits for the memtable to flush and the
+	// context timeout fires.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := d.Compact(ctx, []byte("a"), []byte("z"), false); err != nil &&
+		!errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unexpected Compact error: %v", err)
+	}
+
+	// Create the snapshot at S=N. Had the compaction applied its edit, the
+	// current version would no longer contain a@old, and snap.Get would return
+	// ErrNotFound.
+	snap := d.NewSnapshot()
+
+	// Release B's publish, which lets the flush run.
+	blocker.unblock()
+	<-commitDone
+	<-flushed
+
+	// The snapshot's seqnum is N, so a@N is filtered out (N < N is false) and
+	// a@old at seqnum < N is the only visible value. Had the compaction's edit
+	// dropped a@old, this would return ErrNotFound (data loss).
+	v, closer, getErr := snap.Get([]byte("a"))
+	var observed string
+	if getErr == nil {
+		observed = string(v)
+		_ = closer.Close()
+	}
+	require.NoError(t, snap.Close())
+
+	require.NoError(t, getErr, "snapshot should still see the key (saw NotFound — data loss)")
+	require.Equal(t, "old", observed, "snapshot should observe the pre-commit value")
+}
