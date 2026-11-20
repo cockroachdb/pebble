@@ -259,6 +259,15 @@ type DB struct {
 	// recycled.
 	memTableRecycle atomic.Pointer[memTable]
 
+	// flushWaitSeqNum is nonzero when the flush scheduler found an immutable
+	// flushable that is not ready to be flushed only because its sequence
+	// numbers have not all been published (see DB.readyFlushablesLocked). It
+	// holds the visibleSeqNum the flushable is waiting for. It is set under
+	// DB.mu (see DB.armFlushWait). Once visibleSeqNum reaches it, the publisher
+	// that observes this clears it, by compare-and-swap and without DB.mu, and
+	// reschedules the flush (see DB.maybeScheduleFlushAfterPublish).
+	flushWaitSeqNum base.AtomicSeqNum
+
 	// The logical size of the current WAL.
 	logSize atomic.Uint64
 	// The number of input bytes to the log. This is the raw size of the
@@ -560,18 +569,25 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		panic(err)
 	}
 
+	if fn := d.opts.private.testingBeforeIterLoadReadStateFunc; fn != nil {
+		fn()
+	}
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
-	readState := d.loadReadState()
-
-	// Determine the seqnum to read at after grabbing the read state (current and
-	// memtables) above.
+	var readState *readState
 	var seqNum base.SeqNum
 	if s != nil {
+		// A snapshot read loads the read state after the snapshot's seqnum:
+		// every key below that seqnum was in the LSM by then, and flushes and
+		// compactions preserve the keys visible to registered snapshots.
 		seqNum = s.seqNum
+		readState = d.loadReadState()
 	} else {
-		seqNum = d.mu.versions.visibleSeqNum.Load()
+		// Without a snapshot, read at the visibleSeqNum loaded together with
+		// the read state (current version and memtables), which makes the read
+		// an exact view of the LSM at that seqnum. See loadReadStateAndSeqNum.
+		readState, seqNum = d.loadReadStateAndSeqNum()
 	}
 
 	buf := getIterAllocPool.Get().(*getIterAlloc)
@@ -1077,18 +1093,31 @@ func (d *DB) newIter(
 				readState = newIterOpts.snapshot.readState
 				readState.ref()
 			} else {
-				// NB: loadReadState() calls readState.ref().
-				readState = d.loadReadState()
+				if fn := d.opts.private.testingBeforeIterLoadReadStateFunc; fn != nil {
+					fn()
+				}
+				// NB: loadReadState() and loadReadStateAndSeqNum() call
+				// readState.ref().
+				if seqNum == 0 {
+					// Without a snapshot, read at the visibleSeqNum loaded together
+					// with the read state (current version and memtables), which
+					// makes the read an exact view of the LSM at that seqnum. See
+					// loadReadStateAndSeqNum.
+					readState, seqNum = d.loadReadStateAndSeqNum()
+				} else {
+					// A snapshot read loads the read state after the snapshot's
+					// seqnum: every key below that seqnum was in the LSM by then,
+					// and flushes and compactions preserve the keys visible to
+					// registered snapshots.
+					readState = d.loadReadState()
+				}
 			}
 		} else {
 			// vers != nil
 			newIterOpts.snapshot.vers.Ref()
 		}
-
-		// Determine the seqnum to read at after grabbing the read state (current and
-		// memtables) above.
-		if seqNum == 0 {
-			seqNum = d.mu.versions.visibleSeqNum.Load()
+		if invariants.Enabled && seqNum == 0 {
+			panic(errors.AssertionFailedf("pebble: iterator without a seqnum"))
 		}
 		newIters = d.newIters
 		newIterRangeKey = d.tableNewRangeKeyIter
@@ -1311,10 +1340,13 @@ func (d *DB) newInternalIter(
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
 	var readState *readState
+	seqNum := sOpts.seqNum
 	if sOpts.vers == nil {
 		if sOpts.readState != nil {
 			readState = sOpts.readState
 			readState.ref()
+		} else if seqNum == 0 {
+			readState, seqNum = d.loadReadStateAndSeqNum()
 		} else {
 			readState = d.loadReadState()
 		}
@@ -1322,12 +1354,8 @@ func (d *DB) newInternalIter(
 	if sOpts.vers != nil {
 		sOpts.vers.Ref()
 	}
-
-	// Determine the seqnum to read at after grabbing the read state (current and
-	// memtables) above.
-	seqNum := sOpts.seqNum
-	if seqNum == 0 {
-		seqNum = d.mu.versions.visibleSeqNum.Load()
+	if invariants.Enabled && seqNum == 0 {
+		panic(errors.AssertionFailedf("pebble: internal iterator without a seqnum"))
 	}
 
 	// Bundle various structures under a single umbrella in order to allocate

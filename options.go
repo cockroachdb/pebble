@@ -1116,6 +1116,16 @@ type Options struct {
 		// obsolete file deletion (to make events deterministic).
 		testingAlwaysWaitForCleanup bool
 
+		// testingBeforePublishFunc when non-nil, is called at the top of
+		// commitPipeline.publish. It fires for both regular commits and
+		// ingests (since both publish through commitPipeline.publish). Used
+		// by tests to widen the apply->publish race window in which a batch's
+		// data is already in the memtable, but visibleSeqNum has not yet been
+		// advanced. An ingest that installs its sstables in the version has
+		// already advanced visibleSeqNum when this is called (see
+		// DB.ingestApply).
+		testingBeforePublishFunc func()
+
 		// testingAfterEFOSAcquireIterStateFunc when non-nil, is called by
 		// EventuallyFileOnlySnapshot.acquireIterState after it has captured the
 		// state a new iterator or ScanInternal reads and released the EFOS's
@@ -1123,6 +1133,18 @@ type Options struct {
 		// transition the EFOS to a file-only snapshot, and compact away the state
 		// it was protecting, within that window.
 		testingAfterEFOSAcquireIterStateFunc func()
+
+		// testingBeforeIterLoadReadStateFunc when non-nil, is called by
+		// DB.newIter and DB.getInternal right before they load the current
+		// read state. Used by tests to commit, flush and compact between the
+		// start of a read and the point where it pins the LSM.
+		testingBeforeIterLoadReadStateFunc func()
+
+		// testingAfterLoadReadStateAndSeqNumFunc when non-nil, is called by
+		// DB.loadReadStateAndSeqNum after it loads the read state and seqnum,
+		// before it returns them. Used by tests to change the LSM between the
+		// point where a read pins the LSM and its use of the pinned state.
+		testingAfterLoadReadStateAndSeqNumFunc func()
 
 		// fsCloser holds a closer that should be invoked after a DB using these
 		// Options is closed. This is used to automatically stop the

@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -1031,6 +1032,17 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 			if f.IsCompacting() {
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
+			// A compaction may drop keys shadowed by its inputs' keys, so a snapshot
+			// opened at visibleSeqNum must see every input key. Every table is
+			// published before others can observe it in the version (see
+			// versionSet.logAndApply).
+			if invariants.Enabled {
+				if visible := d.mu.versions.visibleSeqNum.Load(); f.LargestSeqNum >= visible {
+					panic(errors.AssertionFailedf(
+						"pebble: compaction input %s has largest seqnum %s, not below visibleSeqNum %s",
+						f.FileNum, f.LargestSeqNum, visible))
+				}
+			}
 			f.SetCompactionState(manifest.CompactionStateCompacting)
 			if c.startLevel != nil && c.outputLevel != nil && c.startLevel.level == 0 {
 				if c.outputLevel.level == 0 {
@@ -1143,19 +1155,104 @@ func (d *DB) maybeScheduleFlush() {
 	go d.flush()
 }
 
-func (d *DB) passedFlushThreshold() bool {
-	var n int
-	var size uint64
-	for ; n < len(d.mu.mem.queue)-1; n++ {
-		if !d.mu.mem.queue[n].readyForFlush() {
+// readyFlushablesLocked returns the number of flushables at the front of the
+// flushable queue that can be flushed now. A flushable can be flushed once it
+// has no outstanding writers and all of its sequence numbers have been
+// published; see flushable.seqNumUpperBound for why the latter is necessary.
+// The mutable memtable is never included.
+//
+// If it stops at a flushable whose sequence numbers have not all been
+// published, it arranges for the publish that reaches them to call
+// maybeScheduleFlush. A flushable that has outstanding writers needs no such
+// arrangement: the last writer calls maybeScheduleFlush when it drops its
+// reference.
+//
+// d.mu must be held.
+func (d *DB) readyFlushablesLocked() int {
+	queue := d.mu.mem.queue
+	n := 0
+	for ; n < len(queue)-1; n++ {
+		if !queue[n].readyForFlush() {
 			break
 		}
-		if d.mu.mem.queue[n].flushForced {
+		bound := queue[n].seqNumUpperBound()
+		if bound <= d.mu.versions.visibleSeqNum.Load() {
+			continue
+		}
+		// Arm the wait before loading visibleSeqNum again. A publisher stores
+		// visibleSeqNum before loading flushWaitSeqNum (see
+		// maybeScheduleFlushAfterPublish), so with sequentially consistent
+		// atomics either it observes the wait and reschedules the flush, or we
+		// observe the published visibleSeqNum here. In the latter case the wait
+		// stays armed, which costs at most one redundant maybeScheduleFlush.
+		d.armFlushWait(bound)
+		if bound > d.mu.versions.visibleSeqNum.Load() {
+			break
+		}
+	}
+	// A large batch shares its WAL with the memtable before it in the queue,
+	// and the two must be flushed together: a flush advances the minimum
+	// unflushed log number to the log number of the first flushable it leaves
+	// behind (see flush1). The large batch can be unready only because it is
+	// unpublished, in which case the memtable waits with it.
+	if !d.opts.DisableWAL {
+		for n > 0 && queue[n-1].logNum == queue[n].logNum {
+			n--
+		}
+	}
+	return n
+}
+
+// armFlushWait arranges for the publish that advances visibleSeqNum to at
+// least bound to call maybeScheduleFlush (see flushWaitSeqNum).
+//
+// An armed wait is only ever lowered here, never raised or cleared: callers of
+// readyFlushablesLocked that do not schedule a flush (such as the compaction
+// picker, via passedFlushThreshold) must not discard a wait whose flushable
+// may have become ready since it was armed. Once the publish that satisfies
+// the smaller wait reschedules the flush, the flush scheduler arms the larger
+// one if it still needs it.
+func (d *DB) armFlushWait(bound base.SeqNum) {
+	for {
+		cur := d.flushWaitSeqNum.Load()
+		if cur != 0 && cur <= bound {
+			return
+		}
+		if d.flushWaitSeqNum.CompareAndSwap(cur, bound) {
+			return
+		}
+	}
+}
+
+// maybeScheduleFlushAfterPublish reschedules a flush that is waiting for
+// visibleSeqNum to advance (see flushWaitSeqNum), if it has advanced far
+// enough. It is called by commitPipeline.publish after advancing visibleSeqNum,
+// without d.mu held. The check is cheap in the common case where no flush is
+// waiting.
+func (d *DB) maybeScheduleFlushAfterPublish() {
+	waitSeqNum := d.flushWaitSeqNum.Load()
+	if waitSeqNum == 0 || waitSeqNum > d.mu.versions.visibleSeqNum.Load() {
+		return
+	}
+	// Only one publisher reschedules the flush for a given wait.
+	if !d.flushWaitSeqNum.CompareAndSwap(waitSeqNum, 0) {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.maybeScheduleFlush()
+}
+
+func (d *DB) passedFlushThreshold() bool {
+	n := d.readyFlushablesLocked()
+	var size uint64
+	for i := 0; i < n; i++ {
+		if d.mu.mem.queue[i].flushForced {
 			// A flush was forced. Pretend the memtable size is the configured
 			// size. See minFlushSize below.
 			size += d.opts.MemTableSize
 		} else {
-			size += d.mu.mem.queue[n].totalBytes()
+			size += d.mu.mem.queue[i].totalBytes()
 		}
 	}
 	if n == 0 {
@@ -1395,19 +1492,25 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	// previous memtable in the queue. We must ensure the property that both the
 	// large batch and the memtable with which it shares a WAL are flushed
 	// together. The property ensures that the minimum unflushed log number
-	// isn't incremented incorrectly. Since a flushableBatch.readyToFlush always
-	// returns true, and since the large batch will always be placed right after
-	// the memtable with which it shares a WAL, the property is naturally
-	// ensured. The large batch will always be placed after the memtable with
-	// which it shares a WAL because we ensure it in DB.commitWrite by holding
-	// the commitPipeline.mu and then holding DB.mu. As an extra defensive
-	// measure, if we try to flush the memtable without also flushing the
-	// flushable batch in the same flush, since the memtable and flushableBatch
-	// have the same logNum, the logNum invariant check below will trigger.
+	// isn't incremented incorrectly. The large batch will always be placed
+	// right after the memtable with which it shares a WAL because we ensure it
+	// in DB.commitWrite by holding the commitPipeline.mu and then holding
+	// DB.mu, and readyFlushablesLocked never includes such a memtable without
+	// the large batch. As an extra defensive measure, if we try to flush the
+	// memtable without also flushing the flushable batch in the same flush,
+	// since the memtable and flushableBatch have the same logNum, the logNum
+	// invariant check below will trigger.
+	//
+	// NB: readyFlushablesLocked only includes flushables whose sequence numbers
+	// have all been published, and the flush captures the snapshot list (see
+	// runCompaction) after that check, without releasing d.mu. Since
+	// NewSnapshot loads visibleSeqNum under d.mu, every snapshot below a
+	// flushed sequence number is in the list.
+	ready := d.readyFlushablesLocked()
 	var n, inputs int
 	var inputBytes uint64
 	var ingest bool
-	for ; n < len(d.mu.mem.queue)-1; n++ {
+	for ; n < ready; n++ {
 		if f, ok := d.mu.mem.queue[n].flushable.(*ingestedFlushable); ok {
 			if n == 0 {
 				// The first flushable is of type ingestedFlushable. Since these
@@ -1430,9 +1533,6 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// ingestedFlushable. So, perform a flush for those.
 				break
 			}
-		}
-		if !d.mu.mem.queue[n].readyForFlush() {
-			break
 		}
 		inputBytes += d.mu.mem.queue[n].inuseBytes()
 	}
