@@ -254,6 +254,80 @@ close: db/000006.log
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 
+# Same as checkpoint2 but with WithMinimalManifest.
+checkpoint db checkpoints/checkpoint2_minimal restrict=(d-f) minimal
+----
+mkdir-all: checkpoints/checkpoint2_minimal 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint2_minimal
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint2_minimal/OPTIONS-000002
+sync-data: checkpoints/checkpoint2_minimal/OPTIONS-000002
+close: checkpoints/checkpoint2_minimal/OPTIONS-000002
+close: db/OPTIONS-000002
+open-dir: checkpoints/checkpoint2_minimal
+create: checkpoints/checkpoint2_minimal/marker.format-version.000001.030
+sync-data: checkpoints/checkpoint2_minimal/marker.format-version.000001.030
+close: checkpoints/checkpoint2_minimal/marker.format-version.000001.030
+sync: checkpoints/checkpoint2_minimal
+close: checkpoints/checkpoint2_minimal
+create: checkpoints/checkpoint2_minimal/MANIFEST-000001
+sync-data: checkpoints/checkpoint2_minimal/MANIFEST-000001
+close: checkpoints/checkpoint2_minimal/MANIFEST-000001
+open-dir: checkpoints/checkpoint2_minimal
+sync: checkpoints/checkpoint2_minimal
+create: checkpoints/checkpoint2_minimal/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint2_minimal/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint2_minimal/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint2_minimal
+close: checkpoints/checkpoint2_minimal
+open: db/REMOTE-OBJ-CATALOG-000001 (options: *vfs.sequentialReadsOption)
+create: checkpoints/checkpoint2_minimal/REMOTE-OBJ-CATALOG-000001
+sync-data: checkpoints/checkpoint2_minimal/REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint2_minimal/REMOTE-OBJ-CATALOG-000001
+close: db/REMOTE-OBJ-CATALOG-000001
+open-dir: checkpoints/checkpoint2_minimal
+sync: checkpoints/checkpoint2_minimal
+create: checkpoints/checkpoint2_minimal/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+sync-data: checkpoints/checkpoint2_minimal/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint2_minimal/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+sync: checkpoints/checkpoint2_minimal
+close: checkpoints/checkpoint2_minimal
+create: checkpoints/checkpoint2_minimal/000006.log
+open: db/000006.log (options: *vfs.sequentialReadsOption)
+sync-data: checkpoints/checkpoint2_minimal/000006.log
+close: checkpoints/checkpoint2_minimal/000006.log
+close: db/000006.log
+sync: checkpoints/checkpoint2_minimal
+close: checkpoints/checkpoint2_minimal
+
+open checkpoints/checkpoint2_minimal readonly
+----
+open-dir: checkpoints/checkpoint2_minimal
+lock: checkpoints/checkpoint2_minimal/LOCK
+open-dir: checkpoints/checkpoint2_minimal
+open-dir: checkpoints/checkpoint2_minimal
+open-dir: checkpoints/checkpoint2_minimal
+open: checkpoints/checkpoint2_minimal/REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint2_minimal/REMOTE-OBJ-CATALOG-000001
+open-dir: checkpoints/checkpoint2_minimal
+open: checkpoints/checkpoint2_minimal/MANIFEST-000001
+close: checkpoints/checkpoint2_minimal/MANIFEST-000001
+open: checkpoints/checkpoint2_minimal/OPTIONS-000002
+close: checkpoints/checkpoint2_minimal/OPTIONS-000002
+open-dir: checkpoints/checkpoint2_minimal
+open: checkpoints/checkpoint2_minimal/000006.log (options: *vfs.sequentialReadsOption)
+close: checkpoints/checkpoint2_minimal/000006.log
+get-disk-usage: checkpoints/checkpoint2_minimal
+
+print-backing checkpoints/checkpoint2_minimal
+----
+
+close checkpoints/checkpoint2_minimal
+----
+
 # Create a checkpoint that omits SSTs that don't overlap with [a - e) and [d - f).
 checkpoint db checkpoints/checkpoint3 restrict=(a-e, d-f)
 ----
