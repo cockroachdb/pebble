@@ -986,7 +986,7 @@ func (w *RawRowWriter) maybeAddToFilter(key []byte) {
 // Invariant: w.dataBlockBuf.uncompressed must already be populated.
 func (w *RawRowWriter) maybeIncrementTombstoneDenseBlocks() {
 	minSize := w.deletionSizeRatioThreshold * float32(len(w.dataBlockBuf.uncompressed))
-	if w.dataBlockBuf.numDeletions > w.numDeletionsThreshold || float32(w.dataBlockBuf.deletionSize) > minSize {
+	if w.dataBlockBuf.numDeletions >= w.numDeletionsThreshold || float32(w.dataBlockBuf.deletionSize) > minSize {
 		w.props.NumTombstoneDenseBlocks++
 	}
 	w.dataBlockBuf.numDeletions = 0
