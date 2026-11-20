@@ -2308,7 +2308,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	d.mu.versions.logLock()
-	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
+	metrics.private.manifestFileSize = uint64(d.mu.versions.currentManifestSize())
 	backingStats := d.mu.versions.latest.virtualBackings.Stats()
 	blobStats, _ := d.mu.versions.latest.blobFiles.Stats()
 	d.mu.versions.logUnlock()
