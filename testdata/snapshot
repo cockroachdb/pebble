@@ -178,3 +178,83 @@ next
 a:1
 c:2
 .
+
+# A snapshot separates merge operands from their base. The newer operands sum
+# to zero without the base and are written as a MERGE, so both readers see the
+# older stripe's result.
+define merger=deletable
+set a 5
+merge a -1
+set b 1
+snapshot 1
+merge a 2
+merge a -2
+compact a-z
+----
+
+iter snapshot=1
+first
+next
+next
+----
+a:4
+b:1
+.
+
+iter
+first
+next
+next
+----
+a:4
+b:1
+.
+
+# The older stripe resolves to non-existence with its base, so it is absent at
+# the snapshot. The newer operands are merged on top of it.
+define merger=deletable
+set a 5
+merge a -5
+set b 1
+snapshot 1
+merge a 2
+merge a 3
+compact a-z
+----
+
+iter snapshot=1
+first
+next
+----
+b:1
+.
+
+iter
+first
+next
+next
+----
+a:5
+b:1
+.
+
+# The base is in a lower level and no snapshot is open. The operands sum to zero
+# without the base, and the compaction that reaches the base merges them into
+# it, so the base's value stays visible.
+define merger=deletable
+set a 5
+set b 1
+compact a-z
+merge a 2
+merge a -2
+compact a-z
+----
+
+iter
+first
+next
+next
+----
+a:5
+b:1
+.

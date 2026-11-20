@@ -87,6 +87,13 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 				options.Levels[0].BlockSize = blockSize
 				options.Levels[0].IndexBlockSize = blockSize
 			}
+			var merger string
+			if td.MaybeScanArgs(t, "merger", &merger) {
+				if merger != "deletable" {
+					td.Fatalf(t, "unknown merger %q", merger)
+				}
+				options.Merger = deletableSumMerger
+			}
 			d, err = Open("", options)
 			if err != nil {
 				return err.Error()
