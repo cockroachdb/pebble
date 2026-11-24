@@ -386,7 +386,23 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 		return d.finalizeFormatVersUpgrade(FormatColumnarBlocks)
 	},
 	FormatWALSyncChunks: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatWALSyncChunks)
+		if d.mu.log.writer == nil || d.opts.DisableWAL {
+			return d.finalizeFormatVersUpgrade(FormatWALSyncChunks)
+		}
+		// Rotate the WAL and memtable so the active WAL writer switches from
+		// recyclable chunks to WAL sync chunks immediately. Lock order requires
+		// acquiring d.commit.mu before d.mu.
+		d.mu.Unlock()
+		d.commit.mu.Lock()
+		defer d.commit.mu.Unlock()
+		d.mu.Lock()
+		if err := d.closed.Load(); err != nil {
+			return err.(error)
+		}
+		if err := d.finalizeFormatVersUpgrade(FormatWALSyncChunks); err != nil {
+			return err
+		}
+		return d.makeRoomForWrite(nil)
 	},
 	FormatTableFormatV6: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatTableFormatV6)

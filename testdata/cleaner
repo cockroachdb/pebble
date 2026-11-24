@@ -32,12 +32,12 @@ sync: db/temporary.000002.dbtmp
 close: db/temporary.000002.dbtmp
 rename: db/temporary.000002.dbtmp -> db/OPTIONS-000002
 sync: db
-create: db_wal/000003.log
-sync: db_wal
 create: db/marker.format-version.000001.013
 sync: db/marker.format-version.000001.013
 close: db/marker.format-version.000001.013
 sync: db
+create: db_wal/000003.log
+sync: db_wal
 get-disk-usage: db
 
 batch db
@@ -170,12 +170,12 @@ sync: db1/temporary.000002.dbtmp
 close: db1/temporary.000002.dbtmp
 rename: db1/temporary.000002.dbtmp -> db1/OPTIONS-000002
 sync: db1
-create: db1_wal/000003.log
-sync: db1_wal
 create: db1/marker.format-version.000001.013
 sync: db1/marker.format-version.000001.013
 close: db1/marker.format-version.000001.013
 sync: db1
+create: db1_wal/000003.log
+sync: db1_wal
 get-disk-usage: db1
 
 batch db1

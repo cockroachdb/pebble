@@ -32,9 +32,6 @@ sync: db/temporary.000002.dbtmp
 close: db/temporary.000002.dbtmp
 rename: db/temporary.000002.dbtmp -> db/OPTIONS-000002
 sync: db
-create: wal/000003.log
-sync: wal
-[JOB 1] WAL created 000003
 create: db/marker.format-version.000001.014
 sync: db/marker.format-version.000001.014
 close: db/marker.format-version.000001.014
@@ -136,6 +133,9 @@ close: db/marker.format-version.000017.030
 remove: db/marker.format-version.000016.029
 sync: db
 upgraded to format version: 030
+create: wal/000003.log
+sync: wal
+[JOB 1] WAL created 000003
 get-disk-usage: db
 
 flush
@@ -305,10 +305,10 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    97B |      1  652B |   2 21.28
+   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |   105B |      1  652B |   2 19.66
    L6       683B |      1  683B |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.50
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total        2KB |      3   2KB |      0     0 |     0B     0B |   749B |      1  652B |   3  4.67
+total        2KB |      3   2KB |      0     0 |     0B     0B |   757B |      1  652B |   3  4.63
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
@@ -325,7 +325,7 @@ COMMIT PIPELINE
                wals                |              memtables              |       ingestions
     files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
-   1 (0B) |   48B: 97B |    102.1% |         3 |  1 (256KB) |  1 (256KB) |         1 |      0 (0B)
+   1 (0B) |  48B: 105B |    118.8% |         3 |  1 (256KB) |  1 (256KB) |         1 |      0 (0B)
 
 BLOCK CACHE: 2 entries (672B)
                  miss rate [percentage of total misses] since start
@@ -477,10 +477,10 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      2.6KB |      4 2.6KB |      0     0 |     0B     0B |   132B |      2 1.3KB |   4 20.85
+   L0      2.6KB |      4 2.6KB |      0     0 |     0B     0B |   140B |      2 1.3KB |   4 19.66
    L6      1.3KB |      2 1.3KB |      0     0 |     0B     0B |  1.3KB |      1  652B |   1  0.50
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      3.9KB |      6 3.9KB |      0     0 |     0B     0B |    2KB |      3 1.9KB |   5  2.65
+total      3.9KB |      6 3.9KB |      0     0 |     0B     0B |    2KB |      3 1.9KB |   5  2.64
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
@@ -497,7 +497,7 @@ COMMIT PIPELINE
                wals                |              memtables              |       ingestions
     files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
-   1 (0B) |  82B: 132B |     61.0% |         6 |  1 (512KB) |  1 (512KB) |         2 |   1 (1.3KB)
+   1 (0B) |  82B: 140B |     70.7% |         6 |  1 (512KB) |  1 (512KB) |         2 |   1 (1.3KB)
 
 BLOCK CACHE: 6 entries (2KB)
                  miss rate [percentage of total misses] since start
