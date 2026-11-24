@@ -915,8 +915,9 @@ func TestWALSyncOffsetPendingBlocks(t *testing.T) {
 			WriteWALSyncOffsets: func() bool { return true },
 		})
 
-		asyncOffset, err := w.WriteRecord(bytes.Repeat([]byte{'x'}, blockSize+1024))
+		asyncOffset, err := w.WriteRecord(bytes.Repeat([]byte{'x'}, 2*(blockSize-walSyncHeaderSize)))
 		require.NoError(t, err)
+		require.Equal(t, int64(2*blockSize), asyncOffset)
 		require.Eventually(t, func() bool {
 			return f.writePos.Load() == asyncOffset
 		}, 5*time.Second, time.Millisecond)
