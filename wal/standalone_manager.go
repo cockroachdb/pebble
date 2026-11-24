@@ -309,6 +309,11 @@ func (w *standaloneWriter) WriteRecord(
 	return w.w.SyncRecord(p, opts.Done, opts.Err)
 }
 
+// Flush implements Writer.
+func (w *standaloneWriter) Flush() error {
+	return w.w.Flush()
+}
+
 // Close implements Writer.
 func (w *standaloneWriter) Close() (logicalOffset int64, err error) {
 	logicalOffset = w.w.Size()

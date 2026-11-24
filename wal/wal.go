@@ -336,9 +336,9 @@ type FailoverStats struct {
 // Manager handles all WAL work.
 //
 //   - Obsolete can be called concurrently with WAL writing.
-//   - WAL writing: Is done via Create, and the various Writer methods. These
-//     are required to be serialized via external synchronization (specifically,
-//     the caller does it via commitPipeline.mu).
+//   - WAL writing: Is done via Create, and the various Writer methods. Except
+//     for Writer.Flush, these are required to be serialized via external
+//     synchronization (specifically, the caller does it via commitPipeline.mu).
 type Manager interface {
 	// init initializes the Manager. init is called during DB initialization.
 	init(o Options, initial Logs) error
@@ -422,6 +422,10 @@ type Writer interface {
 	// When it's finished, it will invoke [RefCount.Unref] to release its
 	// reference.
 	WriteRecord(p []byte, opts SyncOptions, ref RefCount) (logicalOffset int64, err error)
+	// Flush flushes all records written so far to the underlying log file without
+	// syncing. Unlike WriteRecord and Close, Flush may be called concurrently with
+	// other Writer methods.
+	Flush() error
 	// Close the writer.
 	Close() (logicalOffset int64, err error)
 	// Metrics must be called after Close. The callee will no longer modify the

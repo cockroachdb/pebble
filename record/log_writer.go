@@ -447,6 +447,14 @@ type LogWriter struct {
 		// closed. For signalling of a sync, it is safe to call without holding
 		// flusher.Mutex.
 		ready flusherCond
+		// flushedCond is signalled when flushedBytes advances, an error occurs,
+		// or the flush loop exits, while flushWaiters > 0.
+		flushedCond  sync.Cond
+		flushWaiters int
+		// queuedBlocks is the number of blocks appended to pending so far.
+		queuedBlocks int64
+		// flushedBytes is the total number of bytes written to w so far.
+		flushedBytes int64
 		// Set to true when the flush loop should be closed.
 		close bool
 		// Closed when the flush loop has terminated.
@@ -584,6 +592,7 @@ func NewLogWriter(
 	r.free.blocks = make([]*block, 0, initialAllocatedBlocksCap)
 	r.block = blockPool.Get().(*block)
 	r.flusher.ready.init(&r.flusher.Mutex, r.flusher.pendingSyncs)
+	r.flusher.flushedCond.L = &r.flusher.Mutex
 	r.flusher.closed = make(chan struct{})
 	r.flusher.pending = make([]*block, 0, cap(r.free.blocks))
 	r.flusher.metrics = m
@@ -613,6 +622,9 @@ func (w *LogWriter) flushLoop(context.Context) {
 			syncTimer.Stop()
 		}
 		close(f.closed)
+		if f.flushWaiters > 0 {
+			f.flushedCond.Broadcast()
+		}
 		f.Unlock()
 	}()
 
@@ -743,7 +755,13 @@ func (w *LogWriter) flushLoop(context.Context) {
 				f.walFileOpHistogram.Observe(float64(syncLatency))
 			}
 		}
+		if err == nil {
+			f.flushedBytes += bytesWritten
+		}
 		f.err = err
+		if f.flushWaiters > 0 {
+			f.flushedCond.Broadcast()
+		}
 		if f.err != nil {
 			f.pendingSyncs.clearBlocked()
 			// Update the idleStartTime if work could not be done, so that we don't
@@ -863,6 +881,7 @@ func (w *LogWriter) queueBlock() {
 	f := &w.flusher
 	f.Lock()
 	f.pending = append(f.pending, w.block)
+	f.queuedBlocks++
 	w.block = nextBlock
 	f.ready.Signal()
 	w.err = w.flusher.err
@@ -1012,6 +1031,34 @@ func (w *LogWriter) SyncRecordGeneralized(p []byte, ps PendingSync) (logSize int
 // External synchronisation provided by commitPipeline.mu.
 func (w *LogWriter) Size() int64 {
 	return w.blockNum*blockSize + int64(w.block.written.Load())
+}
+
+// Flush flushes all records written so far to the underlying writer without
+// syncing. Flush may be called concurrently with WriteRecord, SyncRecord, and
+// Close.
+func (w *LogWriter) Flush() error {
+	f := &w.flusher
+	f.Lock()
+	defer f.Unlock()
+	targetOffset := f.queuedBlocks*blockSize + int64(w.block.written.Load())
+	if f.flushedBytes < targetOffset && f.err == nil {
+		f.ready.Signal()
+		f.flushWaiters++
+		defer func() {
+			f.flushWaiters--
+		}()
+		for f.flushedBytes < targetOffset && f.err == nil {
+			select {
+			case <-f.closed:
+				return errors.AssertionFailedf(
+					"pebble/record: LogWriter closed at %d before flushing %d",
+					errors.Safe(f.flushedBytes), errors.Safe(targetOffset))
+			default:
+			}
+			f.flushedCond.Wait()
+		}
+	}
+	return f.err
 }
 
 // emitEOFTrailer writes a special recyclable chunk header to signal EOF.

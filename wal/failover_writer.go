@@ -378,6 +378,7 @@ type failoverWriter struct {
 		// INVARIANT: nextWriterIndex <= len(writers)
 		nextWriterIndex LogNameIndex
 		closed          bool
+		closeErr        error
 		// metrics is initialized in Close. Currently we just use the metrics from
 		// the latest writer after it is closed, since in the common case with
 		// only one writer, that writer's flush loop will have finished and the
@@ -623,7 +624,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 			ww.mu.Lock()
 			defer ww.mu.Unlock()
 			ww.mu.writers[writerIndex].createError = err
-			ww.mu.cond.Signal()
+			ww.mu.cond.Broadcast()
 			if ww.opts.writerCreatedForTest != nil {
 				ww.opts.writerCreatedForTest <- struct{}{}
 			}
@@ -689,7 +690,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 			}
 			// Latest writer.
 			ww.mu.writers[writerIndex].w = w
-			ww.mu.cond.Signal()
+			ww.mu.cond.Broadcast()
 			// NB: snapshotAndSwitchWriter does not block on IO, since
 			// SyncRecordGeneralized does no IO.
 			ww.q.snapshotAndSwitchWriter(w,
@@ -882,7 +883,7 @@ func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 								lastWriter.closed = true
 								lastWriter.err = err
 								lastWriter.metrics = w.Metrics()
-								ww.mu.cond.Signal()
+								ww.mu.cond.Broadcast()
 							}
 						})
 					} else {
@@ -950,11 +951,64 @@ func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 	err = lastWriter.err
 	ww.mu.metrics = lastWriter.metrics
 	ww.mu.closed = true
+	ww.mu.closeErr = err
+	ww.mu.cond.Broadcast()
 	n, m := ww.q.popAll(err)
 	if err == nil && (n > 0 || m > 0) {
 		panic(errors.AssertionFailedf("no error but recordQueue had %d records and %d syncs", errors.Safe(n), errors.Safe(m)))
 	}
 	return logicalOffset, err
+}
+
+// Flush implements Writer.
+func (ww *failoverWriter) Flush() error {
+	ht := ww.q.headTail.Load()
+	h, t := unpackHeadTail(ht)
+	if h == t {
+		return nil
+	}
+	ww.mu.Lock()
+	defer ww.mu.Unlock()
+	type flushState struct {
+		index   LogNameIndex
+		started bool
+		done    bool
+		err     error
+	}
+	var state flushState
+	for !ww.mu.closed {
+		_, curTail := unpackHeadTail(ww.q.headTail.Load())
+		if int32(h-curTail) <= 0 {
+			return nil
+		}
+		latestIndex := ww.mu.nextWriterIndex - 1
+		if !state.started || state.index != latestIndex {
+			state = flushState{index: latestIndex}
+			w := ww.mu.writers[latestIndex].w
+			cErr := ww.mu.writers[latestIndex].createError
+			if w != nil {
+				state.started = true
+				idx := latestIndex
+				ww.opts.stopper.runAsync(func() {
+					err := w.Flush()
+					ww.mu.Lock()
+					defer ww.mu.Unlock()
+					if state.index == idx {
+						state.done = true
+						state.err = err
+						ww.mu.cond.Broadcast()
+					}
+				})
+			} else if cErr != nil {
+				return cErr
+			}
+		}
+		if state.started && state.done && state.index == latestIndex {
+			return state.err
+		}
+		ww.mu.cond.Wait()
+	}
+	return ww.mu.closeErr
 }
 
 // Metrics implements writer.

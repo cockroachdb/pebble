@@ -14,7 +14,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
@@ -24,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -570,4 +573,132 @@ func TestCheckpointFlushableIngest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("ingested"), val)
 	closer.Close()
+}
+
+// TestCheckpointBatchBeforeIngest verifies that Checkpoint flushes buffered WAL
+// records below its captured visibleSeqNum so a batch committed with NoSync
+// before an ingest is not omitted when the checkpoint includes the ingest.
+func TestCheckpointBatchBeforeIngest(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	type gate struct {
+		armed   atomic.Bool
+		fired   atomic.Bool
+		reached chan struct{}
+		release chan struct{}
+		once    sync.Once
+	}
+	newGate := func() *gate {
+		return &gate{reached: make(chan struct{}), release: make(chan struct{})}
+	}
+	hold := func(g *gate) {
+		if g.armed.Load() && g.fired.CompareAndSwap(false, true) {
+			close(g.reached)
+			<-g.release
+		}
+	}
+	openGate := func(g *gate) { g.once.Do(func() { close(g.release) }) }
+
+	logSync, logWrite, manifestSync := newGate(), newGate(), newGate()
+	fs := errorfs.Wrap(vfs.NewMem(), errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if !strings.HasPrefix(op.Path, "db/") {
+			return nil
+		}
+		isSync := op.Kind == errorfs.OpFileSync || op.Kind == errorfs.OpFileSyncData || op.Kind == errorfs.OpFileSyncTo
+		switch {
+		case isSync && strings.HasSuffix(op.Path, ".log"):
+			hold(logSync)
+		case op.Kind == errorfs.OpFileWrite && strings.HasSuffix(op.Path, ".log"):
+			hold(logWrite)
+		case isSync && strings.Contains(op.Path, "MANIFEST"):
+			hold(manifestSync)
+		}
+		return nil
+	}))
+
+	opts := &Options{
+		FS:                          fs,
+		FormatMajorVersion:          internalFormatNewest,
+		DisableAutomaticCompactions: true,
+		Logger:                      testutils.Logger{T: t},
+	}
+	d, err := Open("db", opts)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Build an external SSTable that does not overlap the memtable so Ingest
+	// applies directly to the LSM via a MANIFEST edit.
+	f, err := fs.Create("ext.sst", vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), d.opts.MakeWriterOptions(0, d.TableFormat()))
+	require.NoError(t, w.Set([]byte("z"), []byte("ingested")))
+	require.NoError(t, w.Close())
+	require.NoError(t, d.Set([]byte("a"), []byte("synced"), Sync))
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	defer openGate(logWrite)
+	defer openGate(manifestSync)
+	defer openGate(logSync)
+
+	// 1. Start Checkpoint with WithFlushedWAL and hold its initial WAL sync.
+	logSync.armed.Store(true)
+	ckptErr := make(chan error, 1)
+	wg.Go(func() { ckptErr <- d.Checkpoint("ckpt", WithFlushedWAL()) })
+	<-logSync.reached
+
+	// 2. Commit a NoSync batch; it is published while its WAL record stays
+	// queued behind the held sync.
+	require.NoError(t, d.Set([]byte("k"), []byte("v"), NoSync))
+
+	// 3. Start an ingest sequenced after k and hold its MANIFEST sync while it
+	// holds the manifest lock.
+	manifestSync.armed.Store(true)
+	ingestErr := make(chan error, 1)
+	wg.Go(func() { ingestErr <- d.Ingest(t.Context(), []string{"ext.sst"}) })
+	<-manifestSync.reached
+
+	// 4. Release the initial WAL sync and hold the subsequent WAL write that
+	// carries k's record, then wait for Checkpoint to block on the manifest lock.
+	logWrite.armed.Store(true)
+	openGate(logSync)
+	<-logWrite.reached
+	require.Eventually(t, func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.mu.fileDeletions.disableCount > 0
+	}, 10*time.Second, 100*time.Microsecond)
+
+	// 5. Let the ingest finish. Checkpoint captures the version with z and
+	// visibleSeqNum above both k and z, and must wait for k's WAL write before
+	// copying the WAL.
+	openGate(manifestSync)
+	require.NoError(t, <-ingestErr)
+	select {
+	case err = <-ckptErr:
+	case <-time.After(10 * time.Millisecond):
+		openGate(logWrite)
+		err = <-ckptErr
+	}
+	require.NoError(t, err)
+	openGate(logWrite)
+
+	ck, err := Open("ckpt", &Options{
+		FS:       fs,
+		ReadOnly: true,
+		Logger:   testutils.Logger{T: t},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, ck.Close()) }()
+
+	for _, kv := range []struct{ k, v string }{
+		{"a", "synced"},
+		{"k", "v"},
+		{"z", "ingested"},
+	} {
+		val, closer, err := ck.Get([]byte(kv.k))
+		require.NoError(t, err, "key %s", kv.k)
+		require.Equal(t, kv.v, string(val))
+		require.NoError(t, closer.Close())
+	}
 }
