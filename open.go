@@ -450,17 +450,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		for d.mu.compact.flushing {
 			d.mu.compact.cond.Wait()
 		}
-
-		// Create an empty .log file for the mutable memtable.
-		newLogNum := d.mu.versions.getNextDiskFileNum()
-		d.mu.log.writer, err = d.mu.log.manager.Create(wal.NumWAL(newLogNum), int(jobID))
-		if err != nil {
-			return nil, err
-		}
-
-		// This isn't strictly necessary as we don't use the log number for
-		// memtables being flushed, only for the next unflushed memtable.
-		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = newLogNum
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
 	if !d.opts.ReadOnly {
@@ -482,6 +471,18 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 				return nil, err
 			}
 		}
+
+		// Create an empty .log file for the mutable memtable after ratcheting the
+		// format major version so NewLogWriter observes the active version.
+		newLogNum := d.mu.versions.getNextDiskFileNum()
+		d.mu.log.writer, err = d.mu.log.manager.Create(wal.NumWAL(newLogNum), int(jobID))
+		if err != nil {
+			return nil, err
+		}
+
+		// This isn't strictly necessary as we don't use the log number for
+		// memtables being flushed, only for the next unflushed memtable.
+		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = newLogNum
 	}
 
 	d.mu.tableStats.cond.L = &d.mu.Mutex

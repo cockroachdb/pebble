@@ -140,10 +140,10 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |   289B |      0    0B |   0  5.25
+   L0         0B |      0    0B |      0     0 |     0B     0B |   297B |      0    0B |   0  5.10
    L6      2.2KB |      4 2.2KB |      1   147 |     0B     0B |   429B |      0    0B |   1  4.93
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      2.2KB |      4 2.2KB |      1   147 |     0B     0B |   289B |      0    0B |   1 13.57
+total      2.2KB |      4 2.2KB |      1   147 |     0B     0B |   297B |      0    0B |   1 13.23
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
@@ -160,7 +160,7 @@ COMMIT PIPELINE
                wals                |              memtables              |       ingestions
     files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
-   1 (0B) | 259B: 289B |     11.6% |         2 |  1 (256KB) |  1 (256KB) |         2 |      0 (0B)
+   1 (0B) | 259B: 297B |     14.7% |         2 |  1 (256KB) |  1 (256KB) |         2 |      0 (0B)
 
 BLOCK CACHE: 2 entries (797B)
                  miss rate [percentage of total misses] since start

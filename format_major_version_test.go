@@ -5,12 +5,17 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
@@ -326,4 +331,77 @@ func TestFormatMajorVersions_MaxTableFormat(t *testing.T) {
 			require.Equal(t, tc.want, d.TableFormat())
 		})
 	}
+}
+
+func TestFormatWALSyncChunksRatchet(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	verifyActiveWALSyncChunks := func(t *testing.T, fs *vfs.MemFS, d *DB) {
+		t.Helper()
+		val := bytes.Repeat([]byte{'v'}, 4096)
+		for i := range 9 {
+			require.NoError(t, d.Set(fmt.Appendf(nil, "key-%02d", i), val, Sync))
+		}
+		crashFS := fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
+		require.NoError(t, d.Close())
+
+		entries, err := crashFS.List("")
+		require.NoError(t, err)
+		logs := slices.DeleteFunc(entries, func(s string) bool { return filepath.Ext(s) != ".log" })
+		slices.Sort(logs)
+		lastLog := logs[len(logs)-1]
+
+		f, err := crashFS.OpenReadWrite(lastLog, vfs.WriteCategoryUnspecified)
+		require.NoError(t, err)
+		_, err = f.WriteAt([]byte{0, 0, 0, 0}, 100)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+
+		reopened, err := Open("", &Options{FS: crashFS})
+		if err == nil {
+			_ = reopened.Close()
+		}
+		require.True(t, errors.Is(err, ErrCorruption), "got err=%v", err)
+		require.True(t, errors.Is(err, record.ErrInvalidChunk), "got err=%v", err)
+	}
+
+	t.Run("new-db", func(t *testing.T) {
+		fs := vfs.NewCrashableMem()
+		d, err := Open("", &Options{
+			FS:                 fs,
+			FormatMajorVersion: FormatWALSyncChunks,
+		})
+		require.NoError(t, err)
+		verifyActiveWALSyncChunks(t, fs, d)
+	})
+
+	t.Run("upgrade-at-open", func(t *testing.T) {
+		fs := vfs.NewCrashableMem()
+		d, err := Open("", &Options{
+			FS:                 fs,
+			FormatMajorVersion: FormatWALSyncChunks - 1,
+		})
+		require.NoError(t, err)
+		require.NoError(t, d.Set([]byte("pre"), []byte("1"), Sync))
+		require.NoError(t, d.Close())
+
+		d, err = Open("", &Options{
+			FS:                 fs,
+			FormatMajorVersion: FormatWALSyncChunks,
+		})
+		require.NoError(t, err)
+		verifyActiveWALSyncChunks(t, fs, d)
+	})
+
+	t.Run("upgrade-while-open", func(t *testing.T) {
+		fs := vfs.NewCrashableMem()
+		d, err := Open("", &Options{
+			FS:                 fs,
+			FormatMajorVersion: FormatWALSyncChunks - 1,
+		})
+		require.NoError(t, err)
+		require.NoError(t, d.Set([]byte("pre"), []byte("1"), Sync))
+		require.NoError(t, d.RatchetFormatMajorVersion(FormatWALSyncChunks))
+		verifyActiveWALSyncChunks(t, fs, d)
+	})
 }

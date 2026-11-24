@@ -25,8 +25,6 @@ sync: db/temporary.000002.dbtmp
 close: db/temporary.000002.dbtmp
 rename: db/temporary.000002.dbtmp -> db/OPTIONS-000002
 sync: db
-create: db/000003.log
-sync: db
 create: db/marker.format-version.000001.014
 sync: db/marker.format-version.000001.014
 close: db/marker.format-version.000001.014
@@ -110,6 +108,8 @@ create: db/marker.format-version.000017.030
 sync: db/marker.format-version.000017.030
 close: db/marker.format-version.000017.030
 remove: db/marker.format-version.000016.029
+sync: db
+create: db/000003.log
 sync: db
 get-disk-usage: db
 
@@ -954,8 +954,6 @@ sync: valsepdb/temporary.000002.dbtmp
 close: valsepdb/temporary.000002.dbtmp
 rename: valsepdb/temporary.000002.dbtmp -> valsepdb/OPTIONS-000002
 sync: valsepdb
-create: valsepdb/000003.log
-sync: valsepdb
 create: valsepdb/marker.format-version.000001.014
 sync: valsepdb/marker.format-version.000001.014
 close: valsepdb/marker.format-version.000001.014
@@ -1039,6 +1037,8 @@ create: valsepdb/marker.format-version.000017.030
 sync: valsepdb/marker.format-version.000017.030
 close: valsepdb/marker.format-version.000017.030
 remove: valsepdb/marker.format-version.000016.029
+sync: valsepdb
+create: valsepdb/000003.log
 sync: valsepdb
 get-disk-usage: valsepdb
 

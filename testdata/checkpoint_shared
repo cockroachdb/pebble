@@ -25,8 +25,6 @@ sync: db/temporary.000002.dbtmp
 close: db/temporary.000002.dbtmp
 rename: db/temporary.000002.dbtmp -> db/OPTIONS-000002
 sync: db
-create: db/000003.log
-sync: db
 create: db/marker.format-version.000001.017
 sync: db/marker.format-version.000001.017
 close: db/marker.format-version.000001.017
@@ -95,6 +93,8 @@ create: db/marker.format-version.000014.030
 sync: db/marker.format-version.000014.030
 close: db/marker.format-version.000014.030
 remove: db/marker.format-version.000013.029
+sync: db
+create: db/000003.log
 sync: db
 get-disk-usage: db
 create: db/REMOTE-OBJ-CATALOG-000001
