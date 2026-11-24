@@ -822,6 +822,121 @@ func TestWALSyncOffsetRandom(t *testing.T) {
 	validateWALSyncRecords(t, &f.buffer)
 }
 
+func TestWALSyncOffsetPendingBlocks(t *testing.T) {
+	f := &syncFile{}
+	w := NewLogWriter(f, 1, LogWriterConfig{
+		WriteWALSyncOffsets: func() bool { return true },
+	})
+
+	// Record 0: > blockSize, queues a full block directly to pending.
+	// Record 1: small synced record, partially flushes the current block (b.flushed > 0).
+	// Record 2: spans from the partially flushed block into the next block, queuing
+	//           the partially flushed block into pending.
+	// Record 3: trailing synced record whose header encodes the synced offset after record 2.
+	recordSizes := []int{
+		blockSize + 1024,
+		256,
+		blockSize,
+		256,
+	}
+
+	// Track the expected syncedOffset encoded in each record's chunks (the synced
+	// offset before that record is synced) and each record's start offset.
+	expectedHeaderOffsets := make([]uint64, len(recordSizes))
+	recordStartOffsets := make([]int64, len(recordSizes))
+	var prevSyncedOffset uint64
+	var syncErr error
+	for i, sz := range recordSizes {
+		expectedHeaderOffsets[i] = prevSyncedOffset
+		recordStartOffsets[i] = w.Size()
+
+		var syncWG sync.WaitGroup
+		syncWG.Add(1)
+		payload := bytes.Repeat([]byte{byte('a' + i)}, sz)
+		offset, err := w.SyncRecord(payload, &syncWG, &syncErr)
+		require.NoError(t, err)
+		syncWG.Wait()
+		require.NoError(t, syncErr)
+
+		require.Equal(t, offset, f.writePos.Load())
+		require.Equal(t, offset, f.syncPos.Load())
+		require.Equal(t, uint64(offset), w.syncedOffset.Load())
+		prevSyncedOffset = uint64(offset)
+	}
+	require.NoError(t, w.Close())
+
+	walBytes := f.buffer.Bytes()
+
+	// Verify the encoded syncedOffset in every WAL-sync chunk header matches the
+	// exact synced offset before that record was written.
+	recIdx := 0
+	for i := 0; i < len(walBytes); {
+		if blockSize-(i%blockSize) < walSyncHeaderSize {
+			i += blockSize - (i % blockSize)
+			continue
+		}
+		length := binary.LittleEndian.Uint16(walBytes[i+4 : i+6])
+		chunkEncoding := walBytes[i+6]
+		logNum := binary.LittleEndian.Uint32(walBytes[i+7 : i+11])
+		if logNum == 2 {
+			break
+		}
+		encodedOffset := binary.LittleEndian.Uint64(walBytes[i+11 : i+19])
+		require.Equal(t, expectedHeaderOffsets[recIdx], encodedOffset,
+			"record %d chunk at offset %d", recIdx, i)
+
+		if chunkEncoding == walSyncFullChunkEncoding || chunkEncoding == walSyncLastChunkEncoding {
+			recIdx++
+		}
+		i += walSyncHeaderSize + int(length)
+	}
+	require.Equal(t, len(recordSizes), recIdx)
+
+	// Corrupt a byte inside record 1. Later synced chunks encode a syncedOffset
+	// past record 1, so Reader must report ErrInvalidChunk rather than EOF.
+	corrupted := append([]byte(nil), walBytes...)
+	corruptPos := recordStartOffsets[1] + walSyncHeaderSize
+	corrupted[corruptPos] ^= 0xff
+
+	r := NewReader(bytes.NewReader(corrupted), 1)
+	rr, err := r.Next()
+	require.NoError(t, err)
+	_, err = io.ReadAll(rr)
+	require.NoError(t, err)
+
+	_, err = r.Next()
+	require.ErrorIs(t, err, ErrInvalidChunk)
+
+	// Verify that async multi-block WriteRecord flushes advance writtenOffset so
+	// the subsequent SyncRecord records the exact synced offset.
+	t.Run("async-then-sync", func(t *testing.T) {
+		f := &syncFile{}
+		w := NewLogWriter(f, 1, LogWriterConfig{
+			WriteWALSyncOffsets: func() bool { return true },
+		})
+
+		asyncOffset, err := w.WriteRecord(bytes.Repeat([]byte{'x'}, 2*(blockSize-walSyncHeaderSize)))
+		require.NoError(t, err)
+		require.Equal(t, int64(2*blockSize), asyncOffset)
+		require.Eventually(t, func() bool {
+			return f.writePos.Load() == asyncOffset
+		}, 5*time.Second, time.Millisecond)
+		require.Equal(t, uint64(0), w.syncedOffset.Load())
+
+		var syncWG sync.WaitGroup
+		var syncErr error
+		syncWG.Add(1)
+		offset, err := w.SyncRecord(bytes.Repeat([]byte{'y'}, 256), &syncWG, &syncErr)
+		require.NoError(t, err)
+		syncWG.Wait()
+		require.NoError(t, syncErr)
+
+		require.Equal(t, offset, f.syncPos.Load())
+		require.Equal(t, uint64(offset), w.syncedOffset.Load())
+		require.NoError(t, w.Close())
+	})
+}
+
 // BenchmarkQueueWALBlocks exercises queueing within the LogWriter. It can be
 // useful to measure allocations involved when flushing is slow enough to
 // accumulate a large backlog fo queued blocks.

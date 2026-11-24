@@ -731,17 +731,13 @@ func (w *LogWriter) flushLoop(context.Context) {
 			f.Lock()
 			continue
 		}
-		writtenOffset += uint64(len(data))
-		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, snap)
+		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, snap, writtenOffset)
+		if err == nil {
+			writtenOffset += uint64(bytesWritten)
+		}
 		f.Lock()
-		if synced {
-			// NB: syncedOffset must be advanced on every successful sync; it is
-			// the durability watermark encoded into WAL-sync chunk headers and
-			// used by Reader.readAheadForCorruption to confirm corruption.
-			w.syncedOffset.Store(writtenOffset)
-			if f.walFileOpHistogram != nil {
-				f.walFileOpHistogram.Observe(float64(syncLatency))
-			}
+		if synced && f.walFileOpHistogram != nil {
+			f.walFileOpHistogram.Observe(float64(syncLatency))
 		}
 		f.err = err
 		if f.err != nil {
@@ -778,7 +774,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 }
 
 func (w *LogWriter) flushPending(
-	data []byte, pending []*block, snap pendingSyncsSnapshot,
+	data []byte, pending []*block, snap pendingSyncsSnapshot, writtenOffset uint64,
 ) (synced bool, syncLatency time.Duration, bytesWritten int64, err error) {
 	defer func() {
 		// Translate panics into errors. The errors will cause flushLoop to shut
@@ -810,6 +806,13 @@ func (w *LogWriter) flushPending(
 	if synced {
 		if err == nil && w.s != nil {
 			syncLatency, err = w.syncWithLatency()
+			if err == nil {
+				// NB: syncedOffset must be advanced on every successful sync before
+				// popping sync waiters; it is the durability watermark encoded into
+				// WAL-sync chunk headers and used by Reader.readAheadForCorruption to
+				// confirm corruption.
+				w.syncedOffset.Store(writtenOffset + uint64(bytesWritten))
+			}
 		} else {
 			synced = false
 		}
