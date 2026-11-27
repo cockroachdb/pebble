@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
@@ -25,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -596,6 +598,70 @@ func (f blockingFile) SyncData() error {
 func (f blockingFile) Close() error {
 	f.fs.maybeBlock(f.baseFilename, blockingClose)
 	return f.File.Close()
+}
+
+func TestFailoverWriterFlush(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		fs := newBlockingFS(errorfs.Wrap(vfs.NewMem(), errorfs.ErrInjected.If(errorfs.PathMatch("sec/*"))))
+		openDir := func(name string) dirAndFileHandle {
+			require.NoError(t, fs.MkdirAll(name, 0755))
+			handle, err := fs.OpenDir(name)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, handle.Close()) })
+			return dirAndFileHandle{Dir: Dir{Dirname: name, FS: fs}, File: handle}
+		}
+		primary, secondary := openDir("pri"), openDir("sec")
+		stopper := newStopper()
+		writer, err := newFailoverWriter(failoverWriterOpts{
+			primaryDir:                  primary.Dir,
+			secondaryDir:                secondary.Dir,
+			timeSource:                  defaultTime{},
+			logCreator:                  simpleLogCreator,
+			preallocateSize:             func() int { return 0 },
+			stopper:                     stopper,
+			failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+			writerClosed:                func(logicalLogWithSizesEtc) {},
+			writeWALSyncOffsets:         func() bool { return false },
+		}, primary)
+		require.NoError(t, err)
+		synctest.Wait()
+		startFlush := func() <-chan error {
+			t.Helper()
+			result := make(chan error, 1)
+			go func() { result <- writer.Flush() }()
+			synctest.Wait()
+			assert.Empty(t, result, "Flush returned while primary I/O was blocked")
+			return result
+		}
+
+		primaryLog, secondaryLog := makeLogFilename(0, 0), makeLogFilename(0, 1)
+		fs.setConf(primaryLog, blockingWrite)
+		_, err = writer.WriteRecord([]byte("first"), SyncOptions{}, nil)
+		require.NoError(t, err)
+		beforeSwitch := startFlush()
+		fs.setConf(secondaryLog, blockingCreate)
+		require.NoError(t, writer.switchToNewDir(secondary))
+		fs.setConf(primaryLog, blockingSync)
+		synctest.Wait()
+		assert.Len(t, beforeSwitch, 1, "a successful flush on the primary should survive the switch")
+
+		syncOpts := SyncOptions{Done: &sync.WaitGroup{}, Err: new(error)}
+		syncOpts.Done.Add(1)
+		_, err = writer.WriteRecord([]byte("second"), syncOpts, nil)
+		require.NoError(t, err)
+		afterSwitch := startFlush()
+		fs.setConf(primaryLog, 0)
+		synctest.Wait()
+		assert.Len(t, afterSwitch, 1, "syncing on the primary should wake Flush")
+
+		fs.setConf(secondaryLog, 0)
+		require.NoError(t, <-beforeSwitch)
+		require.NoError(t, <-afterSwitch)
+		_, closeErr := writer.Close()
+		stopper.stop()
+		require.EqualError(t, closeErr, errorfs.ErrInjected.Error())
+		require.ErrorIs(t, writer.Flush(), closeErr)
+	})
 }
 
 // TestConcurrentWritersWithManyRecords tests (a) resizing of the recordQueue,

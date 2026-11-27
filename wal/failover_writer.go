@@ -335,8 +335,8 @@ func unpackHeadTail(ht uint64) (head, tail uint32) {
 // constant since we want a fixed size array for writer.writers.
 const maxPhysicalLogs = 10
 
-// failoverWriter is the implementation of Writer in failover mode. No Writer
-// method blocks for IO, except for Close.
+// failoverWriter is the implementation of Writer in failover mode. Only Flush
+// and Close block for IO.
 //
 // Loosely speaking, Close blocks until all records are successfully written
 // and synced to some log writer. Monitoring of log writer latency and errors
@@ -352,21 +352,20 @@ const maxPhysicalLogs = 10
 // an error on Writer.Close as fatal, this does mean that failoverWriter has
 // limited ability to mask errors (its primary task is to mask high latency).
 type failoverWriter struct {
-	opts failoverWriterOpts
-	q    recordQueue
-	mu   struct {
+	opts         failoverWriterOpts
+	q            recordQueue
+	flushWaiters atomic.Int32
+	mu           struct {
 		sync.Mutex
 		// writers is protected by mu, except for updates to the
 		// latencyAndErrorRecorder field. WriteRecord does not acquire mu, so the
 		// protection by mu is for handling concurrent calls to switchToNewDir,
-		// Close, and getLog.
+		// Close, Flush, and getLog.
 		writers [maxPhysicalLogs]logWriterAndRecorder
 
-		// cond is signaled when the latest LogWriter is set in writers (or there
-		// is a creation error), or when the latest LogWriter is successfully
-		// closed. It is waited on in Close. We don't use channels and select
-		// since what Close is waiting on is dynamic based on the local state in
-		// Close, so using Cond is simpler.
+		// Close and Flush wait on cond for writer creation and completion. While
+		// there are flushWaiters, a successful sync also signals cond: any writer
+		// can advance the queue tail past a flush target.
 		cond *sync.Cond
 		// nextWriterIndex is advanced before creating the *LogWriter. That is, a
 		// slot is reserved by taking the current value of nextWriterIndex and
@@ -768,6 +767,11 @@ func (ww *failoverWriter) doneSyncCallback(doneSync record.PendingSyncIndex, err
 			<-ww.opts.queueSemChan
 		}
 	}
+	if ww.flushWaiters.Load() > 0 {
+		ww.mu.Lock()
+		ww.mu.cond.Broadcast()
+		ww.mu.Unlock()
+	}
 }
 
 // ongoingLatencyOrErrorForCurDir implements switchableWriter.
@@ -962,49 +966,40 @@ func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 
 // Flush implements Writer.
 func (ww *failoverWriter) Flush() error {
-	ht := ww.q.headTail.Load()
-	h, t := unpackHeadTail(ht)
-	if h == t {
-		return nil
-	}
+	targetHead, _ := unpackHeadTail(ww.q.headTail.Load())
 	ww.mu.Lock()
 	defer ww.mu.Unlock()
-	type flushState struct {
-		index   LogNameIndex
-		started bool
-		done    bool
-		err     error
-	}
-	var state flushState
+	ww.flushWaiters.Add(1)
+	defer ww.flushWaiters.Add(-1)
+	var flushing *record.LogWriter
+	var flushErr error
+	var flushed bool
 	for !ww.mu.closed {
-		_, curTail := unpackHeadTail(ww.q.headTail.Load())
-		if int32(h-curTail) <= 0 {
+		_, tail := unpackHeadTail(ww.q.headTail.Load())
+		if flushed || int32(targetHead-tail) <= 0 {
 			return nil
 		}
-		latestIndex := ww.mu.nextWriterIndex - 1
-		if !state.started || state.index != latestIndex {
-			state = flushState{index: latestIndex}
-			w := ww.mu.writers[latestIndex].w
-			cErr := ww.mu.writers[latestIndex].createError
-			if w != nil {
-				state.started = true
-				idx := latestIndex
+		latest := &ww.mu.writers[ww.mu.nextWriterIndex-1]
+		if latest.createError != nil {
+			return latest.createError
+		}
+		if writer := latest.w; writer != nil {
+			if writer != flushing {
+				flushing, flushErr = writer, nil
 				ww.opts.stopper.runAsync(func() {
-					err := w.Flush()
+					err := writer.Flush()
 					ww.mu.Lock()
 					defer ww.mu.Unlock()
-					if state.index == idx {
-						state.done = true
-						state.err = err
-						ww.mu.cond.Broadcast()
+					if err == nil {
+						flushed = true
+					} else if writer == flushing {
+						flushErr = err
 					}
+					ww.mu.cond.Broadcast()
 				})
-			} else if cErr != nil {
-				return cErr
+			} else if flushErr != nil {
+				return flushErr
 			}
-		}
-		if state.started && state.done && state.index == latestIndex {
-			return state.err
 		}
 		ww.mu.cond.Wait()
 	}

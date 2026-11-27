@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -378,6 +379,28 @@ func (f *syncFileWithWait) Write(buf []byte) (int, error) {
 func (f *syncFileWithWait) Sync() error {
 	f.syncWG.Wait()
 	return f.f.Sync()
+}
+
+func TestLogWriterFlush(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		file := &syncFileWithWait{}
+		writer := NewLogWriter(file, 0, LogWriterConfig{WriteWALSyncOffsets: func() bool { return false }})
+		synctest.Wait()
+		file.writeWG.Add(1)
+		offset, err := writer.WriteRecord([]byte("buffered"))
+		require.NoError(t, err)
+		result := make(chan error, 1)
+		go func() { result <- writer.Flush() }()
+		synctest.Wait()
+		if len(result) != 0 {
+			t.Error("Flush returned before the underlying write")
+		}
+		file.writeWG.Done()
+		require.NoError(t, <-result)
+		require.Equal(t, offset, file.f.writePos.Load())
+		require.Zero(t, file.f.syncPos.Load())
+		require.NoError(t, writer.Close())
+	})
 }
 
 func TestMetricsWithoutSync(t *testing.T) {
