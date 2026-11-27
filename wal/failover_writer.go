@@ -335,8 +335,8 @@ func unpackHeadTail(ht uint64) (head, tail uint32) {
 // constant since we want a fixed size array for writer.writers.
 const maxPhysicalLogs = 10
 
-// failoverWriter is the implementation of Writer in failover mode. No Writer
-// method blocks for IO, except for Close.
+// failoverWriter is the implementation of Writer in failover mode. Only Flush
+// and Close block for IO.
 //
 // Loosely speaking, Close blocks until all records are successfully written
 // and synced to some log writer. Monitoring of log writer latency and errors
@@ -352,21 +352,20 @@ const maxPhysicalLogs = 10
 // an error on Writer.Close as fatal, this does mean that failoverWriter has
 // limited ability to mask errors (its primary task is to mask high latency).
 type failoverWriter struct {
-	opts failoverWriterOpts
-	q    recordQueue
-	mu   struct {
+	opts         failoverWriterOpts
+	q            recordQueue
+	flushWaiters atomic.Int32
+	mu           struct {
 		sync.Mutex
 		// writers is protected by mu, except for updates to the
 		// latencyAndErrorRecorder field. WriteRecord does not acquire mu, so the
 		// protection by mu is for handling concurrent calls to switchToNewDir,
-		// Close, and getLog.
+		// Close, Flush, and getLog.
 		writers [maxPhysicalLogs]logWriterAndRecorder
 
-		// cond is signaled when the latest LogWriter is set in writers (or there
-		// is a creation error), or when the latest LogWriter is successfully
-		// closed. It is waited on in Close. We don't use channels and select
-		// since what Close is waiting on is dynamic based on the local state in
-		// Close, so using Cond is simpler.
+		// Close and Flush wait on cond for writer creation and completion. While
+		// there are flushWaiters, a successful sync also signals cond: any writer
+		// can advance the queue tail past a flush target.
 		cond *sync.Cond
 		// nextWriterIndex is advanced before creating the *LogWriter. That is, a
 		// slot is reserved by taking the current value of nextWriterIndex and
@@ -378,6 +377,7 @@ type failoverWriter struct {
 		// INVARIANT: nextWriterIndex <= len(writers)
 		nextWriterIndex LogNameIndex
 		closed          bool
+		closeErr        error
 		// metrics is initialized in Close. Currently we just use the metrics from
 		// the latest writer after it is closed, since in the common case with
 		// only one writer, that writer's flush loop will have finished and the
@@ -623,7 +623,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 			ww.mu.Lock()
 			defer ww.mu.Unlock()
 			ww.mu.writers[writerIndex].createError = err
-			ww.mu.cond.Signal()
+			ww.mu.cond.Broadcast()
 			if ww.opts.writerCreatedForTest != nil {
 				ww.opts.writerCreatedForTest <- struct{}{}
 			}
@@ -689,7 +689,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 			}
 			// Latest writer.
 			ww.mu.writers[writerIndex].w = w
-			ww.mu.cond.Signal()
+			ww.mu.cond.Broadcast()
 			// NB: snapshotAndSwitchWriter does not block on IO, since
 			// SyncRecordGeneralized does no IO.
 			ww.q.snapshotAndSwitchWriter(w,
@@ -766,6 +766,11 @@ func (ww *failoverWriter) doneSyncCallback(doneSync record.PendingSyncIndex, err
 		for i := 0; i < numSyncsPopped; i++ {
 			<-ww.opts.queueSemChan
 		}
+	}
+	if ww.flushWaiters.Load() > 0 {
+		ww.mu.Lock()
+		ww.mu.cond.Broadcast()
+		ww.mu.Unlock()
 	}
 }
 
@@ -882,7 +887,7 @@ func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 								lastWriter.closed = true
 								lastWriter.err = err
 								lastWriter.metrics = w.Metrics()
-								ww.mu.cond.Signal()
+								ww.mu.cond.Broadcast()
 							}
 						})
 					} else {
@@ -950,11 +955,55 @@ func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 	err = lastWriter.err
 	ww.mu.metrics = lastWriter.metrics
 	ww.mu.closed = true
+	ww.mu.closeErr = err
+	ww.mu.cond.Broadcast()
 	n, m := ww.q.popAll(err)
 	if err == nil && (n > 0 || m > 0) {
 		panic(errors.AssertionFailedf("no error but recordQueue had %d records and %d syncs", errors.Safe(n), errors.Safe(m)))
 	}
 	return logicalOffset, err
+}
+
+// Flush implements Writer.
+func (ww *failoverWriter) Flush() error {
+	targetHead, _ := unpackHeadTail(ww.q.headTail.Load())
+	ww.mu.Lock()
+	defer ww.mu.Unlock()
+	ww.flushWaiters.Add(1)
+	defer ww.flushWaiters.Add(-1)
+	var flushing *record.LogWriter
+	var flushErr error
+	var flushed bool
+	for !ww.mu.closed {
+		_, tail := unpackHeadTail(ww.q.headTail.Load())
+		if flushed || int32(targetHead-tail) <= 0 {
+			return nil
+		}
+		latest := &ww.mu.writers[ww.mu.nextWriterIndex-1]
+		if latest.createError != nil {
+			return latest.createError
+		}
+		if writer := latest.w; writer != nil {
+			if writer != flushing {
+				flushing, flushErr = writer, nil
+				ww.opts.stopper.runAsync(func() {
+					err := writer.Flush()
+					ww.mu.Lock()
+					defer ww.mu.Unlock()
+					if err == nil {
+						flushed = true
+					} else if writer == flushing {
+						flushErr = err
+					}
+					ww.mu.cond.Broadcast()
+				})
+			} else if flushErr != nil {
+				return flushErr
+			}
+		}
+		ww.mu.cond.Wait()
+	}
+	return ww.mu.closeErr
 }
 
 // Metrics implements writer.

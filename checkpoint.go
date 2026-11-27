@@ -204,10 +204,16 @@ func (d *DB) Checkpoint(
 	}
 	versionBlobFiles := d.mu.versions.latest.blobFiles.Metadatas()
 
-	// Acquire the logs while holding mutexes to ensure we don't race with a
-	// flush that might mark a log that's relevant to `current` as obsolete
-	// before our call to List.
-	allLogicalLogs := d.mu.log.manager.List()
+	// Record the highest WAL number present when the version and visibleSeqNum
+	// are read. File deletions are disabled above, so no WAL in manager can
+	// become obsolete until Checkpoint returns.
+	var maxWALNum wal.NumWAL
+	var hasWALs bool
+	if logs := d.mu.log.manager.List(); len(logs) > 0 {
+		hasWALs = true
+		maxWALNum = logs[len(logs)-1].Num
+	}
+	logWriter := d.mu.log.writer
 
 	// Collect SSTable files referenced by flushable ingest entries. These files
 	// are not yet part of the LSM (not in current) but are referenced by WAL
@@ -244,6 +250,31 @@ func (d *DB) Checkpoint(
 	d.mu.versions.logUnlock()
 	d.mu.Unlock()
 	defer current.Unref()
+
+	// Batches below visibleSeqNum may still have their WAL records buffered in
+	// logWriter (for example, batches committed with NoSync or ApplyNoSyncWait,
+	// including ones committed before an ingest that is already in current).
+	// Flush logWriter before copying the WALs so every record below
+	// visibleSeqNum has been written to its WAL file.
+	if !d.opts.DisableWAL && logWriter != nil {
+		if err := logWriter.Flush(); err != nil {
+			return err
+		}
+	}
+
+	// List the WALs after flushing logWriter so any failover segment created or
+	// switched to during Flush is included, while excluding any newer WALs
+	// created after the snapshot was captured.
+	var allLogicalLogs wal.Logs
+	if hasWALs {
+		allLogicalLogs = d.mu.log.manager.List()
+		for i := range allLogicalLogs {
+			if allLogicalLogs[i].Num > maxWALNum {
+				allLogicalLogs = allLogicalLogs[:i]
+				break
+			}
+		}
+	}
 
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
