@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -124,6 +125,138 @@ func (ff *flakyFile) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (ff *flakyFile) Close() error { return nil }
+
+// TestExternalIteratorSyntheticSeqNums verifies that each file opened by
+// NewExternalIter receives the same non-zero SyntheticSeqNum for its point
+// iterator and its range-deletion iterator (descending from the total file
+// count down to 1). Regression test for #5617, where decrementing seqNum
+// before constructing the range-deletion iterator gave each file's range
+// deletions seqNum-1 and left the last file with NoSyntheticSeqNum (0).
+func TestExternalIteratorSyntheticSeqNums(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	for _, tableFormat := range []sstable.TableFormat{
+		sstable.TableFormatPebblev4,
+		sstable.TableFormatMax,
+	} {
+		t.Run(tableFormat.String(), func(t *testing.T) {
+			mem := vfs.NewMem()
+			opts := &Options{
+				FS:       mem,
+				Comparer: testkeys.Comparer,
+			}
+			opts.EnsureDefaults()
+			writeOpts := opts.MakeWriterOptions(6, tableFormat)
+
+			buildSST := func(name string, fn func(w *sstable.Writer)) {
+				wf, err := mem.Create(name, vfs.WriteCategoryUnspecified)
+				require.NoError(t, err)
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(wf), writeOpts)
+				fn(w)
+				require.NoError(t, w.Close())
+			}
+
+			openSST := func(name string) objstorage.ReadableFile {
+				f, err := mem.Open(name)
+				require.NoError(t, err)
+				return f
+			}
+
+			buildSST("f0.sst", func(w *sstable.Writer) {
+				require.NoError(t, w.Set([]byte("a"), []byte("v0")))
+				require.NoError(t, w.DeleteRange([]byte("a"), []byte("c")))
+				require.NoError(t, w.RangeKeySet([]byte("a"), []byte("c"), []byte("@1"), []byte("rk0")))
+			})
+			buildSST("f1.sst", func(w *sstable.Writer) {
+				require.NoError(t, w.Set([]byte("d"), []byte("v1")))
+				require.NoError(t, w.DeleteRange([]byte("d"), []byte("f")))
+				require.NoError(t, w.RangeKeySet([]byte("d"), []byte("f"), []byte("@1"), []byte("rk1")))
+			})
+			buildSST("f2.sst", func(w *sstable.Writer) {
+				require.NoError(t, w.Set([]byte("b"), []byte("v2")))
+				require.NoError(t, w.Set([]byte("e"), []byte("v2")))
+				require.NoError(t, w.DeleteRange([]byte("a"), []byte("z")))
+				require.NoError(t, w.RangeKeySet([]byte("a"), []byte("z"), []byte("@1"), []byte("rk2")))
+			})
+
+			checkSeqNums := func(t *testing.T, layers [][]string) {
+				t.Helper()
+				var files [][]objstorage.ReadableFile
+				total := 0
+				for _, layer := range layers {
+					row := make([]objstorage.ReadableFile, len(layer))
+					for j, name := range layer {
+						row[j] = openSST(name)
+					}
+					files = append(files, row)
+					total += len(layer)
+				}
+
+				it, err := NewExternalIter(opts, &IterOptions{
+					KeyTypes: IterKeyTypePointsAndRanges,
+				}, files)
+				require.NoError(t, err)
+				defer func() { require.NoError(t, it.Close()) }()
+
+				m, ok := it.pointIter.(*mergingIter)
+				require.True(t, ok, "expected external pointIter to be *mergingIter")
+				require.Len(t, m.levels, total)
+
+				for i := range m.levels {
+					wantSeq := base.SeqNum(total - i)
+					kv := m.levels[i].iter.First()
+					require.NotNil(t, kv, "level %d point iter unexpectedly empty", i)
+					require.Equal(t, wantSeq, kv.SeqNum(), "level %d point iter synthetic seqnum", i)
+
+					require.NotNil(t, m.levels[i].rangeDelIter, "level %d rangeDelIter unexpectedly nil", i)
+					span, err := m.levels[i].rangeDelIter.First()
+					require.NoError(t, err)
+					require.NotNil(t, span, "level %d rangeDelIter unexpectedly empty", i)
+					require.Len(t, span.Keys, 1)
+					require.Equal(t, wantSeq, span.Keys[0].SeqNum(), "level %d rangeDelIter synthetic seqnum", i)
+				}
+			}
+
+			t.Run("single-file", func(t *testing.T) {
+				checkSeqNums(t, [][]string{{"f0.sst"}})
+			})
+
+			t.Run("multi-layer", func(t *testing.T) {
+				checkSeqNums(t, [][]string{{"f0.sst", "f1.sst"}, {"f2.sst"}})
+
+				// Also verify public point+range iteration semantics across layers:
+				// f0 and f1 shadow f2's point keys (b, e) via range deletions while
+				// preserving their own point keys (a, d).
+				it, err := NewExternalIter(opts, &IterOptions{
+					KeyTypes: IterKeyTypePointsAndRanges,
+				}, [][]objstorage.ReadableFile{
+					{openSST("f0.sst"), openSST("f1.sst")},
+					{openSST("f2.sst")},
+				})
+				require.NoError(t, err)
+				defer func() { require.NoError(t, it.Close()) }()
+
+				var gotPoints []string
+				var gotRanges []string
+				for valid := it.First(); valid; valid = it.Next() {
+					hasPoint, hasRange := it.HasPointAndRange()
+					if hasPoint {
+						gotPoints = append(gotPoints, fmt.Sprintf("%s=%s", it.Key(), it.Value()))
+					}
+					if hasRange && it.RangeKeyChanged() {
+						start, end := it.RangeBounds()
+						rks := it.RangeKeys()
+						require.Len(t, rks, 1)
+						gotRanges = append(gotRanges, fmt.Sprintf("[%s,%s)=%s", start, end, rks[0].Value))
+					}
+				}
+				require.NoError(t, it.Error())
+				require.Equal(t, []string{"a=v0", "d=v1"}, gotPoints)
+				require.Equal(t, []string{"[a,c)=rk0", "[c,d)=rk2", "[d,f)=rk1", "[f,z)=rk2"}, gotRanges)
+			})
+		})
+	}
+}
 
 func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 	ks := testkeys.Alpha(6)

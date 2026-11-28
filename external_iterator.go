@@ -175,19 +175,19 @@ func createExternalPointIter(
 			// not have obsolete points (so the performance optimization is
 			// unnecessary), and we don't want to bother constructing a
 			// BlockPropertiesFilterer that includes obsoleteKeyBlockPropertyFilter.
-			transforms := sstable.IterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
+			synthSeqNum := sstable.SyntheticSeqNum(seqNum)
 			seqNum--
 			pointIter, err = r.NewPointIter(ctx, sstable.IterOptions{
 				Lower:                it.opts.LowerBound,
 				Upper:                it.opts.UpperBound,
-				Transforms:           transforms,
+				Transforms:           sstable.IterTransforms{SyntheticSeqNum: synthSeqNum},
 				FilterBlockSizeLimit: sstable.NeverUseFilterBlock,
 				Env:                  readEnv,
 				ReaderProvider:       sstable.MakeTrivialReaderProvider(r),
 			})
 			if err == nil {
 				rangeDelIter, err = r.NewRawRangeDelIter(ctx, sstable.FragmentIterTransforms{
-					SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum),
+					SyntheticSeqNum: synthSeqNum,
 				}, readEnv)
 			}
 			if err != nil {
